@@ -15,14 +15,13 @@ import {
   ShoppingCart,
   X,
   Trash2,
-  AlertCircle
+  AlertCircle,
+  CreditCard
 } from "lucide-react";
 import { useState, useEffect } from "react";
 
 const NAV_LINKS = [
-  { name: "Features", href: "#" },
-  { name: "Pricing", href: "#" },
-  { name: "Discord", href: "#" }
+  { name: "Pricing", href: "#plans" }
 ];
 
 const FEATURES = [
@@ -113,7 +112,39 @@ export default function App() {
     });
   };
 
+  const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
+  const [checkoutStep, setCheckoutStep] = useState<'payment' | 'success'>('payment');
   const total = cart.reduce((acc, item) => acc + item.price, 0);
+  const [isDiscordLinked, setIsDiscordLinked] = useState(false);
+
+  // Listen for OAuth Success from popup
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      // Basic origin check for security
+      if (!event.origin.endsWith('.run.app') && !event.origin.includes('localhost')) {
+        return;
+      }
+
+      if (event.data?.type === 'DISCORD_AUTH_SUCCESS') {
+        setIsDiscordLinked(true);
+        setLastAdded("Roles applied successfully!");
+      }
+    };
+
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, []);
+
+  const handleCheckout = () => {
+    setIsCartOpen(false);
+    setCheckoutStep('payment');
+    setIsCheckoutOpen(true);
+  };
+
+  const handlePaymentComplete = (method: string) => {
+    console.log(`Payment via ${method} complete`);
+    setCheckoutStep('success');
+  };
 
   return (
     <div className="min-h-screen flex flex-col selection:bg-primary selection:text-white">
@@ -225,7 +256,10 @@ export default function App() {
                     <span className="text-white/40 font-bold uppercase tracking-widest text-xs">Total Monthly</span>
                     <span className="text-3xl font-black font-display text-white italic">${total}</span>
                   </div>
-                  <button className="w-full h-16 rounded-2xl bg-primary text-white font-black tracking-widest uppercase text-sm shadow-xl shadow-primary/20 hover:scale-[1.02] active:scale-[0.98] transition-all">
+                  <button 
+                    onClick={handleCheckout}
+                    className="w-full h-16 rounded-2xl bg-primary text-white font-black tracking-widest uppercase text-sm shadow-xl shadow-primary/20 hover:scale-[1.02] active:scale-[0.98] transition-all"
+                  >
                     Proceed to Checkout
                   </button>
                   <p className="text-[10px] text-white/20 text-center font-medium uppercase tracking-[0.2em]">
@@ -235,6 +269,183 @@ export default function App() {
               )}
             </motion.div>
           </>
+        )}
+      </AnimatePresence>
+
+      {/* Checkout Modal */}
+      <AnimatePresence>
+        {isCheckoutOpen && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-6">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsCheckoutOpen(false)}
+              className="absolute inset-0 bg-black/80 backdrop-blur-md"
+            />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="relative w-full max-w-lg bg-surface-dark border border-white/10 rounded-[32px] overflow-hidden shadow-2xl flex flex-col pt-12 pb-10 px-10"
+            >
+              <button 
+                onClick={() => setIsCheckoutOpen(false)}
+                className="absolute top-6 right-6 p-2 text-white/40 hover:text-white transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+
+              <AnimatePresence mode="wait">
+                {checkoutStep === 'payment' ? (
+                  <motion.div 
+                    key="payment-step"
+                    initial={{ opacity: 0, x: 20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: -20 }}
+                    className="space-y-8"
+                  >
+                    <div className="text-center space-y-2">
+                      <h2 className="text-2xl font-black font-display uppercase tracking-widest italic">Secure Checkout</h2>
+                      <p className="text-white/40 text-sm font-medium tracking-tight">Total due: <span className="text-primary">${total}</span> billed monthly</p>
+                    </div>
+
+                    <div className="space-y-4">
+                      {/* Stripe Option */}
+                      <button 
+                        onClick={() => handlePaymentComplete('Stripe')}
+                        className="w-full p-6 rounded-2xl border border-white/5 bg-background/50 hover:bg-background hover:border-primary/50 transition-all flex items-center justify-between group"
+                      >
+                        <div className="flex items-center gap-4">
+                          <div className="w-12 h-12 rounded-xl bg-white/5 flex items-center justify-center text-white/60 group-hover:text-[#635BFF] transition-colors">
+                            <CreditCard className="w-6 h-6" />
+                          </div>
+                          <div className="text-left">
+                            <p className="font-bold text-white uppercase tracking-widest text-sm">Pay with Card</p>
+                            <p className="text-[10px] text-white/30 font-bold uppercase tracking-widest">Secured by Stripe</p>
+                          </div>
+                        </div>
+                        <ChevronDown className="w-5 h-5 -rotate-90 text-white/20 group-hover:text-primary transition-colors" />
+                      </button>
+
+                      {/* PayPal Option */}
+                      <button 
+                        onClick={() => handlePaymentComplete('PayPal')}
+                        className="w-full p-6 rounded-2xl border border-white/5 bg-background/50 hover:bg-background hover:border-primary/50 transition-all flex items-center justify-between group"
+                      >
+                        <div className="flex items-center gap-4">
+                          <div className="w-12 h-12 rounded-xl bg-white/5 flex items-center justify-center text-white/60 group-hover:text-[#003087] transition-colors">
+                            <Zap className="w-6 h-6" />
+                          </div>
+                          <div className="text-left">
+                            <p className="font-bold text-white uppercase tracking-widest text-sm">PayPal Checkout</p>
+                            <p className="text-[10px] text-white/30 font-bold uppercase tracking-widest">Fast & Secure Payment</p>
+                          </div>
+                        </div>
+                        <ChevronDown className="w-5 h-5 -rotate-90 text-white/20 group-hover:text-primary transition-colors" />
+                      </button>
+                    </div>
+
+                    <div className="pt-4 flex flex-col items-center gap-4">
+                      <div className="flex items-center gap-8 opacity-20 grayscale">
+                        <CreditCard className="w-6 h-6" />
+                        <Hexagon className="w-6 h-6" />
+                        <Shield className="w-6 h-6" />
+                      </div>
+                    </div>
+                  </motion.div>
+                ) : (
+                  <motion.div 
+                    key="success-step"
+                    initial={{ opacity: 0, x: 20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    className="space-y-8"
+                  >
+                    <div className="text-center space-y-4">
+                      <div className="w-20 h-20 bg-primary/20 rounded-full flex items-center justify-center mx-auto mb-4 border border-primary/20">
+                        <CheckCircle2 className="w-10 h-10 text-primary" />
+                      </div>
+                      <h2 className="text-3xl font-black font-display uppercase tracking-widest italic">Payment Successful!</h2>
+                      <p className="text-white/60 text-sm font-medium tracking-tight">Your membership is ready. Finalize your account below.</p>
+                    </div>
+
+                    {/* Discord Link Step */}
+                    <div className="p-6 rounded-3xl bg-primary/5 border border-primary/20 flex flex-col gap-6 shadow-inner">
+                      <div className="flex items-center gap-4">
+                        <div className="w-12 h-12 rounded-2xl bg-[#5865F2] flex items-center justify-center shadow-lg shadow-[#5865F2]/20">
+                          <Hexagon className="w-6 h-6 text-white" />
+                        </div>
+                        <div className="text-left">
+                          <p className="text-[10px] font-black text-primary uppercase tracking-[0.2em] mb-1">Final Step</p>
+                          <p className="text-sm font-bold text-white tracking-tight">Sync Discord Roles</p>
+                          <p className="text-[10px] text-white/30 font-medium uppercase tracking-widest">Applying roles for {cart.length} active plans</p>
+                        </div>
+                      </div>
+
+                      <div className="space-y-4">
+                        {isDiscordLinked ? (
+                          <div className="w-full p-4 rounded-xl bg-green-500/10 border border-green-500/20 text-green-500 text-center space-y-2">
+                            <p className="text-xs font-black uppercase tracking-widest">Discord Linked</p>
+                            <p className="text-[10px] font-bold opacity-80 uppercase tracking-tight">Roles have been applied to your account.</p>
+                          </div>
+                        ) : (
+                          <button 
+                            onClick={async () => {
+                              try {
+                                const res = await fetch('/api/auth/discord/url');
+                                if (!res.ok) throw new Error('Failed to get auth URL');
+                                const { url } = await res.json();
+                                
+                                const width = 500;
+                                const height = 750;
+                                const left = window.screenX + (window.outerWidth - width) / 2;
+                                const top = window.screenY + (window.outerHeight - height) / 2;
+                                
+                                const authWindow = window.open(
+                                  url,
+                                  'discord_auth',
+                                  `width=${width},height=${height},left=${left},top=${top}`
+                                );
+
+                                if (!authWindow) {
+                                  alert("Popup blocked! Please allow popups to link your Discord account.");
+                                }
+                              } catch (err) {
+                                console.error(err);
+                                alert("Configuration Error: Please ensure DISCORD_CLIENT_ID is set in your secrets.");
+                              }
+                            }}
+                            className="w-full h-14 rounded-xl bg-[#5865F2] hover:bg-[#4752C4] text-white text-xs font-black uppercase tracking-[0.2em] transition-all flex items-center justify-center gap-2 shadow-lg shadow-[#5865F2]/20 active:scale-95"
+                          >
+                            Link Discord & Get Roles
+                          </button>
+                        )}
+                        <p className="text-[9px] text-white/20 font-bold uppercase tracking-[0.3em] text-center">
+                          Required to access rotation files and support
+                        </p>
+                      </div>
+                    </div>
+
+                    <button 
+                      onClick={() => {
+                        setCart([]);
+                        setIsCheckoutOpen(false);
+                      }}
+                      className="w-full text-xs font-black text-white/30 hover:text-white uppercase tracking-[0.3em] transition-colors"
+                    >
+                      Return to Dashboard
+                    </button>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              <div className="mt-8">
+                <p className="text-[10px] text-white/20 font-medium uppercase tracking-[0.2em] text-center">
+                  Encrypted transaction. No card data is stored.
+                </p>
+              </div>
+            </motion.div>
+          </div>
         )}
       </AnimatePresence>
 
@@ -354,6 +565,13 @@ export default function App() {
                     <CheckCircle2 className="w-5 h-5 text-primary shrink-0 transition-transform group-hover:scale-110" />
                     <span className="text-sm">Standard support</span>
                   </li>
+                  <li className="flex items-center gap-3 font-medium p-3 rounded-lg bg-primary/5 border border-primary/10">
+                    <Hexagon className="w-5 h-5 text-primary shrink-0" />
+                    <div className="flex flex-col">
+                      <span className="text-[10px] font-black uppercase tracking-widest opacity-50">Discord Role</span>
+                      <span className="text-xs font-bold text-white">Single Class Member</span>
+                    </div>
+                  </li>
                 </ul>
 
                 <div className="space-y-4 pt-6 border-t border-white/5 flex flex-col">
@@ -427,6 +645,13 @@ export default function App() {
                       <span className="text-sm font-bold text-white tracking-tight">{item}</span>
                     </li>
                   ))}
+                  <li className="flex items-center gap-3 font-medium p-3 rounded-lg bg-white/5 border border-white/10">
+                    <Hexagon className="w-5 h-5 text-primary shrink-0 transition-transform hover:rotate-180 duration-1000" />
+                    <div className="flex flex-col">
+                      <span className="text-[10px] font-black uppercase tracking-widest opacity-50">Unlocked Role</span>
+                      <span className="text-xs font-bold text-white">AIO Member</span>
+                    </div>
+                  </li>
                 </ul>
 
                 <button 
