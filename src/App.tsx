@@ -16,9 +16,20 @@ import {
   X,
   Trash2,
   AlertCircle,
-  CreditCard
+  CreditCard,
+  User as UserIcon,
+  LayoutDashboard,
+  Settings,
+  LogOut
 } from "lucide-react";
 import { useState, useEffect } from "react";
+import { auth, db } from "./lib/firebase";
+import { onAuthStateChanged } from "firebase/auth";
+import { doc, onSnapshot, updateDoc, serverTimestamp, collection, addDoc, setDoc } from "firebase/firestore";
+import { Auth, logout } from "./components/Auth";
+import { Dashboard } from "./components/Dashboard";
+import { AdminPanel } from "./components/AdminPanel";
+import { CheckoutModal } from "./components/CheckoutModal";
 
 const NAV_LINKS = [
   { name: "Pricing", href: "#plans" }
@@ -45,12 +56,46 @@ type CartItem = {
   wowClass?: string;
 };
 
+type View = 'landing' | 'dashboard' | 'admin';
+
 export default function App() {
+  const [user, setUser] = useState<any>(null);
+  const [userData, setUserData] = useState<any>(null);
+  const [view, setView] = useState<View>('landing');
+  const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [selectedClass, setSelectedClass] = useState("");
   const [cart, setCart] = useState<CartItem[]>([]);
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [showError, setShowError] = useState(false);
   const [lastAdded, setLastAdded] = useState<string | null>(null);
+
+  // Auth & Profile Listener
+  useEffect(() => {
+    const unsubAuth = onAuthStateChanged(auth, (authUser) => {
+      setUser(authUser);
+      if (!authUser) {
+        setUserData(null);
+        setView('landing');
+      }
+    });
+    return () => unsubAuth();
+  }, []);
+
+  useEffect(() => {
+    if (!user) return;
+
+    const userPath = `users/${user.uid}`;
+    const unsubProfile = onSnapshot(doc(db, 'users', user.uid), (snapshot) => {
+      if (snapshot.exists()) {
+        setUserData(snapshot.data());
+      }
+    }, (err) => {
+      console.error("Profile sync error:", err);
+      // Don't use handleFirestoreError here as it might trigger a loop if the UI reacts to the thrown error
+    });
+
+    return () => unsubProfile();
+  }, [user]);
 
   // Auto-hide error and notification
   useEffect(() => {
@@ -68,17 +113,18 @@ export default function App() {
   }, [lastAdded]);
 
   const addToCart = (item: CartItem) => {
-    // Check if duplicate for one-class or AIO
     const isDuplicate = cart.find(i => 
       (i.type === 'aio' && item.type === 'aio') || 
       (i.type === 'one-class' && item.type === 'one-class' && i.wowClass === item.wowClass)
     );
 
     if (isDuplicate) {
+      console.log(`[Cart] Item already in cart: ${item.name}`);
       setLastAdded("Already in cart");
       return;
     }
 
+    console.log(`[Cart] Adding item: ${item.name}`);
     setCart(prev => [...prev, item]);
     setLastAdded(`${item.name} added!`);
     setIsCartOpen(true);
@@ -104,46 +150,82 @@ export default function App() {
   };
 
   const handleAddAIO = () => {
+    let price = 50;
+    let name = "All-In-One Access Plan";
+
+    if (user && userData?.plan === 'single' && userData?.updatedAt) {
+      try {
+        const lastBillingDate = userData.updatedAt.toDate();
+        const now = new Date();
+        const diffTime = Math.abs(now.getTime() - lastBillingDate.getTime());
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        
+        // Simple simulation: 30 day month
+        const daysLeft = Math.max(0, 30 - (diffDays % 30));
+        const proportion = daysLeft / 30;
+        
+        // All-In-One (50) - Single (35) = 15 difference
+        const upgradeDiff = 15 * proportion;
+        price = Math.round(upgradeDiff * 100) / 100; // Round to 2 decimals
+        name = "All-In-One Upgrade (Prorated)";
+        
+        console.log(`[Upgrade] Calculated prorated price: ${price} based on ${daysLeft} days remaining.`);
+      } catch (e) {
+        console.warn("[Upgrade] Could not calculate proration accurately, using full difference of $15", e);
+        price = 15;
+      }
+    }
+
     addToCart({
       id: `aio-${Date.now()}`,
-      name: "All-In-One Access Plan",
-      price: 50,
+      name: name,
+      price: price,
       type: 'aio'
     });
   };
 
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
-  const [checkoutStep, setCheckoutStep] = useState<'payment' | 'success'>('payment');
   const total = cart.reduce((acc, item) => acc + item.price, 0);
   const [isDiscordLinked, setIsDiscordLinked] = useState(false);
 
-  // Listen for OAuth Success from popup
   useEffect(() => {
-    const handleMessage = (event: MessageEvent) => {
-      // Basic origin check for security
-      if (!event.origin.endsWith('.run.app') && !event.origin.includes('localhost')) {
-        return;
-      }
-
-      if (event.data?.type === 'DISCORD_AUTH_SUCCESS') {
-        setIsDiscordLinked(true);
-        setLastAdded("Roles applied successfully!");
+    const handleMessage = async (event: MessageEvent) => {
+      // Allow messages from our own domain or localhost
+      if (!event.origin.endsWith('.run.app') && !event.origin.includes('localhost')) return;
+      
+      if (event.data?.type === 'DISCORD_AUTH_SUCCESS' && user) {
+        const discordId = event.data.discordId;
+        
+        try {
+          const { updateDoc, doc, serverTimestamp } = await import('firebase/firestore');
+          await updateDoc(doc(db, 'users', user.uid), {
+            discordId: discordId,
+            updatedAt: serverTimestamp()
+          });
+          setIsDiscordLinked(true);
+          setLastAdded("Account Linked!");
+        } catch (err) {
+          console.error("Failed to link discord client-side:", err);
+          alert("Discord linked, but failed to update profile. Please refresh.");
+        }
       }
     };
-
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);
-  }, []);
+  }, [user]);
+
+  const toggleCart = () => setIsCartOpen(!isCartOpen);
 
   const handleCheckout = () => {
+    console.log("[Cart] Proceeding to checkout. Current cart:", cart);
+    if (!user) {
+      console.log("[Cart] User not logged in, opening auth modal");
+      setIsAuthOpen(true);
+      setIsCartOpen(false);
+      return;
+    }
     setIsCartOpen(false);
-    setCheckoutStep('payment');
     setIsCheckoutOpen(true);
-  };
-
-  const handlePaymentComplete = (method: string) => {
-    console.log(`Payment via ${method} complete`);
-    setCheckoutStep('success');
   };
 
   return (
@@ -151,15 +233,18 @@ export default function App() {
       {/* Header */}
       <header className="fixed top-0 left-0 right-0 z-50 border-b border-white/5 bg-background/80 backdrop-blur-md">
         <div className="max-w-7xl mx-auto px-6 md:px-12 h-20 flex items-center justify-between">
-          <div className="flex items-center gap-3">
+          <button 
+            onClick={() => setView('landing')}
+            className="flex items-center gap-3 hover:opacity-80 transition-opacity"
+          >
             <div className="text-primary">
               <Hexagon className="w-8 h-8 fill-primary/20" />
             </div>
-            <span className="text-xl font-bold tracking-tight font-display">FAFO Rotations</span>
-          </div>
+            <span className="text-xl font-bold tracking-tight font-display">FAFO</span>
+          </button>
 
           <nav className="hidden md:flex items-center gap-10">
-            {NAV_LINKS.map(link => (
+            {view === 'landing' && NAV_LINKS.map(link => (
               <a 
                 key={link.name} 
                 href={link.href} 
@@ -182,14 +267,57 @@ export default function App() {
                 </span>
               )}
             </button>
-            <button className="px-6 py-2 rounded-xl bg-primary text-white text-sm font-bold hover:scale-105 active:scale-95 transition-all glow-primary">
-              Login
-            </button>
+
+            {cart.length > 0 && !isCheckoutOpen && !userData?.plan && (
+              <button 
+                onClick={handleCheckout}
+                className="hidden lg:flex px-6 py-2 rounded-xl border border-primary/50 text-white text-xs font-bold hover:bg-primary transition-all"
+              >
+                Checkout
+              </button>
+            )}
+
+            {user ? (
+              <div className="flex items-center gap-2">
+                <button 
+                  onClick={() => setView('dashboard')}
+                  className={`p-2 rounded-xl transition-all ${view === 'dashboard' ? 'bg-primary text-white shadow-lg shadow-primary/20' : 'text-white/40 hover:text-white'}`}
+                >
+                  <LayoutDashboard className="w-6 h-6" />
+                </button>
+                {userData?.isAdmin && (
+                  <button 
+                    onClick={() => setView('admin')}
+                    className={`p-2 rounded-xl transition-all ${view === 'admin' ? 'bg-primary text-white shadow-lg shadow-primary/20' : 'text-white/40 hover:text-white'}`}
+                  >
+                    <Settings className="w-6 h-6" />
+                  </button>
+                )}
+                <button 
+                  onClick={logout}
+                  className="p-2 text-white/20 hover:text-red-500 transition-colors"
+                >
+                  <LogOut className="w-6 h-6" />
+                </button>
+              </div>
+            ) : (
+              <button 
+                onClick={() => setIsAuthOpen(true)}
+                className="px-6 py-2 rounded-xl bg-primary text-white text-sm font-bold hover:scale-105 active:scale-95 transition-all glow-primary"
+              >
+                Login
+              </button>
+            )}
           </div>
         </div>
       </header>
 
-      {/* Cart Drawer */}
+      {/* Auth Modal */}
+      <AnimatePresence>
+        {isAuthOpen && <Auth onClose={() => setIsAuthOpen(false)} />}
+      </AnimatePresence>
+
+      {/* Cart Drawer ... (existing implementation) */}
       <AnimatePresence>
         {isCartOpen && (
           <>
@@ -262,9 +390,6 @@ export default function App() {
                   >
                     Proceed to Checkout
                   </button>
-                  <p className="text-[10px] text-white/20 text-center font-medium uppercase tracking-[0.2em]">
-                    Billed monthly. Cancel anytime at terminal.
-                  </p>
                 </div>
               )}
             </motion.div>
@@ -273,185 +398,21 @@ export default function App() {
       </AnimatePresence>
 
       {/* Checkout Modal */}
-      <AnimatePresence>
-        {isCheckoutOpen && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-6">
-            <motion.div 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setIsCheckoutOpen(false)}
-              className="absolute inset-0 bg-black/80 backdrop-blur-md"
-            />
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.9, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.9, y: 20 }}
-              className="relative w-full max-w-lg bg-surface-dark border border-white/10 rounded-[32px] overflow-hidden shadow-2xl flex flex-col pt-12 pb-10 px-10"
-            >
-              <button 
-                onClick={() => setIsCheckoutOpen(false)}
-                className="absolute top-6 right-6 p-2 text-white/40 hover:text-white transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
-
-              <AnimatePresence mode="wait">
-                {checkoutStep === 'payment' ? (
-                  <motion.div 
-                    key="payment-step"
-                    initial={{ opacity: 0, x: 20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: -20 }}
-                    className="space-y-8"
-                  >
-                    <div className="text-center space-y-2">
-                      <h2 className="text-2xl font-black font-display uppercase tracking-widest italic">Secure Checkout</h2>
-                      <p className="text-white/40 text-sm font-medium tracking-tight">Total due: <span className="text-primary">${total}</span> billed monthly</p>
-                    </div>
-
-                    <div className="space-y-4">
-                      {/* Stripe Option */}
-                      <button 
-                        onClick={() => handlePaymentComplete('Stripe')}
-                        className="w-full p-6 rounded-2xl border border-white/5 bg-background/50 hover:bg-background hover:border-primary/50 transition-all flex items-center justify-between group"
-                      >
-                        <div className="flex items-center gap-4">
-                          <div className="w-12 h-12 rounded-xl bg-white/5 flex items-center justify-center text-white/60 group-hover:text-[#635BFF] transition-colors">
-                            <CreditCard className="w-6 h-6" />
-                          </div>
-                          <div className="text-left">
-                            <p className="font-bold text-white uppercase tracking-widest text-sm">Pay with Card</p>
-                            <p className="text-[10px] text-white/30 font-bold uppercase tracking-widest">Secured by Stripe</p>
-                          </div>
-                        </div>
-                        <ChevronDown className="w-5 h-5 -rotate-90 text-white/20 group-hover:text-primary transition-colors" />
-                      </button>
-
-                      {/* PayPal Option */}
-                      <button 
-                        onClick={() => handlePaymentComplete('PayPal')}
-                        className="w-full p-6 rounded-2xl border border-white/5 bg-background/50 hover:bg-background hover:border-primary/50 transition-all flex items-center justify-between group"
-                      >
-                        <div className="flex items-center gap-4">
-                          <div className="w-12 h-12 rounded-xl bg-white/5 flex items-center justify-center text-white/60 group-hover:text-[#003087] transition-colors">
-                            <Zap className="w-6 h-6" />
-                          </div>
-                          <div className="text-left">
-                            <p className="font-bold text-white uppercase tracking-widest text-sm">PayPal Checkout</p>
-                            <p className="text-[10px] text-white/30 font-bold uppercase tracking-widest">Fast & Secure Payment</p>
-                          </div>
-                        </div>
-                        <ChevronDown className="w-5 h-5 -rotate-90 text-white/20 group-hover:text-primary transition-colors" />
-                      </button>
-                    </div>
-
-                    <div className="pt-4 flex flex-col items-center gap-4">
-                      <div className="flex items-center gap-8 opacity-20 grayscale">
-                        <CreditCard className="w-6 h-6" />
-                        <Hexagon className="w-6 h-6" />
-                        <Shield className="w-6 h-6" />
-                      </div>
-                    </div>
-                  </motion.div>
-                ) : (
-                  <motion.div 
-                    key="success-step"
-                    initial={{ opacity: 0, x: 20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    className="space-y-8"
-                  >
-                    <div className="text-center space-y-4">
-                      <div className="w-20 h-20 bg-primary/20 rounded-full flex items-center justify-center mx-auto mb-4 border border-primary/20">
-                        <CheckCircle2 className="w-10 h-10 text-primary" />
-                      </div>
-                      <h2 className="text-3xl font-black font-display uppercase tracking-widest italic">Payment Successful!</h2>
-                      <p className="text-white/60 text-sm font-medium tracking-tight">Your membership is ready. Finalize your account below.</p>
-                    </div>
-
-                    {/* Discord Link Step */}
-                    <div className="p-6 rounded-3xl bg-primary/5 border border-primary/20 flex flex-col gap-6 shadow-inner">
-                      <div className="flex items-center gap-4">
-                        <div className="w-12 h-12 rounded-2xl bg-[#5865F2] flex items-center justify-center shadow-lg shadow-[#5865F2]/20">
-                          <Hexagon className="w-6 h-6 text-white" />
-                        </div>
-                        <div className="text-left">
-                          <p className="text-[10px] font-black text-primary uppercase tracking-[0.2em] mb-1">Final Step</p>
-                          <p className="text-sm font-bold text-white tracking-tight">Sync Discord Roles</p>
-                          <p className="text-[10px] text-white/30 font-medium uppercase tracking-widest">Applying roles for {cart.length} active plans</p>
-                        </div>
-                      </div>
-
-                      <div className="space-y-4">
-                        {isDiscordLinked ? (
-                          <div className="w-full p-4 rounded-xl bg-green-500/10 border border-green-500/20 text-green-500 text-center space-y-2">
-                            <p className="text-xs font-black uppercase tracking-widest">Discord Linked</p>
-                            <p className="text-[10px] font-bold opacity-80 uppercase tracking-tight">Roles have been applied to your account.</p>
-                          </div>
-                        ) : (
-                          <button 
-                            onClick={async () => {
-                              try {
-                                const roleTypes = Array.from(new Set(cart.map(i => i.type))).join(',');
-                                const res = await fetch(`/api/auth/discord/url?roleType=${roleTypes}`);
-                                if (!res.ok) throw new Error('Failed to get auth URL');
-                                const { url } = await res.json();
-                                
-                                const width = 500;
-                                const height = 750;
-                                const left = window.screenX + (window.outerWidth - width) / 2;
-                                const top = window.screenY + (window.outerHeight - height) / 2;
-                                
-                                const authWindow = window.open(
-                                  url,
-                                  'discord_auth',
-                                  `width=${width},height=${height},left=${left},top=${top}`
-                                );
-
-                                if (!authWindow) {
-                                  alert("Popup blocked! Please allow popups to link your Discord account.");
-                                }
-                              } catch (err) {
-                                console.error(err);
-                                alert("Configuration Error: Please ensure DISCORD_CLIENT_ID is set in your secrets.");
-                              }
-                            }}
-                            className="w-full h-14 rounded-xl bg-[#5865F2] hover:bg-[#4752C4] text-white text-xs font-black uppercase tracking-[0.2em] transition-all flex items-center justify-center gap-2 shadow-lg shadow-[#5865F2]/20 active:scale-95"
-                          >
-                            Link Discord & Get Roles
-                          </button>
-                        )}
-                        <p className="text-[9px] text-white/20 font-bold uppercase tracking-[0.3em] text-center">
-                          Required to access rotation files and support
-                        </p>
-                      </div>
-                    </div>
-
-                    <button 
-                      onClick={() => {
-                        setCart([]);
-                        setIsCheckoutOpen(false);
-                      }}
-                      className="w-full text-xs font-black text-white/30 hover:text-white uppercase tracking-[0.3em] transition-colors"
-                    >
-                      Return to Dashboard
-                    </button>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-
-              <div className="mt-8">
-                <p className="text-[10px] text-white/20 font-medium uppercase tracking-[0.2em] text-center">
-                  Encrypted transaction. No card data is stored.
-                </p>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
+      <CheckoutModal 
+        isOpen={isCheckoutOpen}
+        onClose={() => setIsCheckoutOpen(false)}
+        user={user}
+        userData={userData}
+        cart={cart}
+        total={total}
+        isDiscordLinked={isDiscordLinked}
+        onSuccess={() => {
+          setCart([]);
+          setView('dashboard');
+        }}
+      />
 
       <main className="flex-1 pt-20">
-        {/* Notification Toast */}
         <AnimatePresence>
           {lastAdded && (
             <motion.div 
@@ -464,231 +425,142 @@ export default function App() {
               <span className="text-white text-xs font-black tracking-widest uppercase">{lastAdded}</span>
             </motion.div>
           )}
+          {showError && (
+            <motion.div 
+              initial={{ opacity: 0, y: -20, x: "-50%" }}
+              animate={{ opacity: 1, y: 0, x: "-50%" }}
+              exit={{ opacity: 0, y: -20, x: "-50%" }}
+              className="fixed top-24 left-1/2 z-[100] px-6 py-3 bg-red-500 rounded-full shadow-2xl flex items-center gap-3"
+            >
+              <AlertCircle className="w-4 h-4 text-white" />
+              <span className="text-white text-xs font-black tracking-widest uppercase text-center">Please select a class first!</span>
+            </motion.div>
+          )}
         </AnimatePresence>
 
-        {/* Hero Section */}
-        <section className="relative py-20 md:py-32 overflow-hidden">
-          <div className="max-w-7xl mx-auto px-6 md:px-12 grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
-            <motion.div 
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ duration: 0.6 }}
-              className="space-y-8"
-            >
-              <div className="space-y-4">
-                <h1 className="text-6xl md:text-8xl font-black font-display leading-[1] tracking-tighter uppercase italic">
-                  Master your class with <span className="text-primary italic">One Button.</span>
-                </h1>
-                <p className="text-lg md:text-xl text-white/40 leading-relaxed max-w-xl font-medium tracking-tight">
-                  One-button WoW rotations built for PvP and PvE. Smart cooldowns, defensives, and full automation. Stay ahead of the curve.
-                </p>
-              </div>
-            </motion.div>
-
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ duration: 0.6, delay: 0.2 }}
-              className="relative aspect-[4/5] rounded-3xl overflow-hidden border border-white/10 group shadow-2xl"
-            >
-              <div className="absolute inset-0 bg-primary/10 group-hover:bg-primary/5 transition-colors duration-500 z-10" />
-              <img 
-                src="https://lh3.googleusercontent.com/aida-public/AB6AXuD_RvsT5naFa0_NRqPhIJ0zOn_9vsqJwwuPXaiPnYQtb2Br13wT_ps2yRb_cCuopvl8LUR45gD09LMOolu_5KAaAEHKNmEA_Z9JN_xHtx2uNPNxFNdpjPTFASPBFjlLIgJGOHKSRYKBGYrTQxLOetur2PWRtsnLyvfXy0NKpEYD1LtXKOeMBp3lPRl3Q_gGVMQK-qZwDWVZgZN6t1hLOs2U7eaxnxcJVPfYrgCAREv35Jw7dSJ57-DJ7PxNLjgm9iAZpwHuIia-WKA" 
-                alt="Dark Fantasy Warrior"
-                className="w-full h-full object-cover grayscale-[0.2] group-hover:grayscale-0 transition-all duration-700 active:scale-105"
-                referrerPolicy="no-referrer"
-              />
-              <div className="absolute inset-0 shadow-[inset_0_0_100px_rgba(0,0,0,0.8)] z-20" />
-            </motion.div>
-          </div>
-        </section>
-
-        {/* Feature Chips */}
-        <section className="pb-24">
-          <div className="max-w-7xl mx-auto px-6 md:px-12">
-            <div className="flex flex-wrap gap-4 justify-center">
-              {FEATURES.map((feature, index) => (
-                <motion.div 
-                  key={feature.text}
-                  initial={{ opacity: 0, y: 10 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  transition={{ delay: index * 0.1 }}
-                  viewport={{ once: true }}
-                  className="flex items-center gap-3 px-6 py-4 rounded-xl bg-surface-dark border border-white/5 hover:border-primary/50 transition-colors group cursor-default"
-                >
-                  <span className="text-primary group-hover:scale-110 transition-transform">
-                    {feature.icon}
-                  </span>
-                  <span className="text-sm font-bold font-display tracking-widest text-white/90">
-                    {feature.text}
-                  </span>
-                </motion.div>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        {/* Pricing Section */}
-        <section id="plans" className="py-32 bg-[#12070d] relative overflow-hidden">
-          {/* Subtle background glow */}
-          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-primary/5 blur-[150px] pointer-events-none rounded-full" />
-          
-          <div className="max-w-7xl mx-auto px-6 md:px-12 relative z-10">
-            <div className="text-center mb-20 space-y-4">
-              <span className="text-primary font-bold tracking-[0.3em] text-xs uppercase block">Contract Tiers</span>
-              <h2 className="text-5xl md:text-6xl font-black font-display tracking-tighter uppercase italic">Choose Your Plan</h2>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-12 max-w-4xl mx-auto items-stretch">
-              {/* Card 1: One Class */}
-              <motion.div 
-                whileHover={{ y: -5 }}
-                className="flex flex-col p-8 md:p-10 rounded-3xl bg-surface-dark border border-white/5 hover:border-white/20 transition-all group"
-              >
-                <div className="mb-8">
-                  <h3 className="text-white/40 font-bold text-sm tracking-[0.2em] uppercase mb-1">One Class</h3>
-                  <div className="flex items-baseline gap-2">
-                    <span className="text-5xl font-black font-display text-white">$35</span>
-                    <span className="text-white/30 font-medium tracking-tight">/mo</span>
-                  </div>
-                </div>
-
-                <ul className="flex-1 space-y-5 mb-10 text-white/70">
-                  <li className="flex items-center gap-3 font-medium">
-                    <CheckCircle2 className="w-5 h-5 text-primary shrink-0 transition-transform group-hover:scale-110" />
-                    <span className="text-sm">All specs for one class</span>
-                  </li>
-                  <li className="flex items-center gap-3 font-medium">
-                    <CheckCircle2 className="w-5 h-5 text-primary shrink-0 transition-transform group-hover:scale-110" />
-                    <span className="text-sm">Fully optimized rotations</span>
-                  </li>
-                  <li className="flex items-center gap-3 font-medium">
-                    <CheckCircle2 className="w-5 h-5 text-primary shrink-0 transition-transform group-hover:scale-110" />
-                    <span className="text-sm">Standard support</span>
-                  </li>
-                  <li className="flex items-center gap-3 font-medium p-3 rounded-lg bg-primary/5 border border-primary/10">
-                    <Hexagon className="w-5 h-5 text-primary shrink-0" />
-                    <div className="flex flex-col">
-                      <span className="text-[10px] font-black uppercase tracking-widest opacity-50">Discord Role</span>
-                      <span className="text-xs font-bold text-white">Single Class Member</span>
+        {/* View Routing */}
+        <div className="min-h-screen flex flex-col">
+          {view === 'landing' ? (
+            <>
+              {/* Hero Section ... (existing hero code) */}
+              <section className="relative py-20 md:py-32 overflow-hidden">
+                <div className="max-w-7xl mx-auto px-6 md:px-12 grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
+                  <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} className="space-y-8">
+                    <div className="space-y-4">
+                      <h1 className="text-6xl md:text-8xl font-black font-display leading-[1] tracking-tighter uppercase italic">
+                        Master your class with <span className="text-primary italic">One Button.</span>
+                      </h1>
+                      <p className="text-lg md:text-xl text-white/40 leading-relaxed max-w-xl font-medium tracking-tight">
+                        One-button WoW rotations built for PvP and PvE. Smart cooldowns, defensives, and full automation.
+                      </p>
                     </div>
-                  </li>
-                </ul>
+                  </motion.div>
 
-                <div className="space-y-4 pt-6 border-t border-white/5 flex flex-col">
-                  <div className="relative">
-                    <select 
-                      value={selectedClass}
-                      onChange={(e) => {
-                        setSelectedClass(e.target.value);
-                        setShowError(false);
-                      }}
-                      className={`w-full h-14 pl-5 pr-12 rounded-xl bg-background border ${showError ? 'border-red-500 animate-shake' : 'border-white/10'} text-white font-bold text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 appearance-none cursor-pointer transition-all hover:bg-background/80`}
-                    >
-                      <option value="" disabled>Select Your Class</option>
-                      {WORLD_OF_WARCRAFT_CLASSES.map(cls => (
-                        <option key={cls} value={cls.toLowerCase()}>{cls}</option>
-                      ))}
-                    </select>
-                    <ChevronDown className="absolute right-5 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30 pointer-events-none" />
-                  </div>
-                  
-                  <AnimatePresence>
-                    {showError && (
-                      <motion.div 
-                        initial={{ opacity: 0, height: 0 }}
-                        animate={{ opacity: 1, height: "auto" }}
-                        exit={{ opacity: 0, height: 0 }}
-                        className="flex items-center gap-2 text-red-500 text-[10px] font-black uppercase tracking-widest"
-                      >
-                        <AlertCircle className="w-3 h-3" />
-                        Please select a class first
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-
-                  <button 
-                    onClick={handleAddOneClass}
-                    className="w-full h-14 rounded-xl border-2 border-primary/30 text-white font-black tracking-widest uppercase text-sm hover:bg-primary hover:border-primary transition-all duration-300 active:scale-95 shadow-lg shadow-black/20"
-                  >
-                    Select Plan
-                  </button>
-                </div>
-              </motion.div>
-
-              {/* Card 2: AIO Access */}
-              <motion.div 
-                whileHover={{ y: -5 }}
-                className="relative flex flex-col p-8 md:p-10 rounded-3xl bg-[#3d1a2d] border-2 border-primary glow-primary-strong z-10 overflow-hidden"
-              >
-                {/* Popular Badge */}
-                <div className="absolute top-0 left-1/2 -translate-x-1/2 bg-primary text-white text-[10px] font-black px-6 py-1.5 rounded-b-xl uppercase tracking-[0.2em] shadow-lg">
-                  Most Popular
-                </div>
-
-                <div className="mb-8 mt-4">
-                  <h3 className="text-white/80 font-bold text-sm tracking-[0.2em] uppercase mb-1 italic">AIO Access</h3>
-                  <div className="flex items-baseline gap-2">
-                    <span className="text-5xl font-black font-display text-white">$50</span>
-                    <span className="text-white/40 font-medium tracking-tight">/mo</span>
+                  <div className="relative aspect-[4/5] rounded-3xl overflow-hidden border border-white/10 shadow-2xl">
+                    <img 
+                      src="https://lh3.googleusercontent.com/aida-public/AB6AXuD_RvsT5naFa0_NRqPhIJ0zOn_9vsqJwwuPXaiPnYQtb2Br13wT_ps2yRb_cCuopvl8LUR45gD09LMOolu_5KAaAEHKNmEA_Z9JN_xHtx2uNPNxFNdpjPTFASPBFjlLIgJGOHKSRYKBGYrTQxLOetur2PWRtsnLyvfXy0NKpEYD1LtXKOeMBp3lPRl3Q_gGVMQK-qZwDWVZgZN6t1hLOs2U7eaxnxcJVPfYrgCAREv35Jw7dSJ57-DJ7PxNLjgm9iAZpwHuIia-WKA" 
+                      alt="Dark Fantasy Warrior"
+                      className="w-full h-full object-cover grayscale-[0.2]"
+                      referrerPolicy="no-referrer"
+                    />
                   </div>
                 </div>
+              </section>
 
-                <ul className="flex-1 space-y-5 mb-10">
-                  {[
-                    "All classes and specs",
-                    "Full access and updates",
-                    "Priority Discord access",
-                    "Early beta features"
-                  ].map((item) => (
-                    <li key={item} className="flex items-center gap-3">
-                      <CheckCircle2 className="w-5 h-5 text-primary shrink-0 fill-primary/20" />
-                      <span className="text-sm font-bold text-white tracking-tight">{item}</span>
-                    </li>
+              <section className="pb-24">
+                <div className="max-w-7xl mx-auto px-6 md:px-12 flex flex-wrap gap-4 justify-center">
+                  {FEATURES.map((feature, index) => (
+                    <div key={feature.text} className="flex items-center gap-3 px-6 py-4 rounded-xl bg-surface-dark border border-white/5">
+                      <span className="text-primary">{feature.icon}</span>
+                      <span className="text-sm font-bold font-display tracking-widest text-white/90">{feature.text}</span>
+                    </div>
                   ))}
-                  <li className="flex items-center gap-3 font-medium p-3 rounded-lg bg-white/5 border border-white/10">
-                    <Hexagon className="w-5 h-5 text-primary shrink-0 transition-transform hover:rotate-180 duration-1000" />
-                    <div className="flex flex-col">
-                      <span className="text-[10px] font-black uppercase tracking-widest opacity-50">Unlocked Role</span>
-                      <span className="text-xs font-bold text-white">AIO Member</span>
-                    </div>
-                  </li>
-                </ul>
+                </div>
+              </section>
 
-                <button 
-                  onClick={handleAddAIO}
-                  className="w-full h-14 rounded-xl bg-primary text-white font-black tracking-[0.1em] uppercase text-sm shadow-xl shadow-primary/25 hover:bg-orange-600 active:scale-95 transition-all duration-300"
-                >
-                  Get AIO Access
-                </button>
-              </motion.div>
-            </div>
-          </div>
-        </section>
+              {/* Pricing Section ... (existing pricing code) */}
+              <section id="plans" className="py-32 bg-[#12070d] relative">
+                <div className="max-w-7xl mx-auto px-6 md:px-12 text-center mb-20 space-y-4">
+                  <h2 className="text-5xl md:text-6xl font-black font-display tracking-tighter uppercase italic">Choose Your Plan</h2>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-12 max-w-4xl mx-auto">
+                  <div className="p-10 rounded-3xl bg-surface-dark border border-white/5 space-y-8 flex flex-col">
+                    <div>
+                      <h3 className="text-white/40 font-bold text-sm tracking-widest uppercase">One Class</h3>
+                      <p className="text-5xl font-black font-display text-white mt-1">$35<span className="text-xs">/mo</span></p>
+                    </div>
+
+                    <ul className="flex-1 space-y-4">
+                      {["All specs for one class", "Fully optimized rotations", "Standard support", "Discord Role"].map(item => (
+                        <li key={item} className="flex items-center gap-3 text-white/70">
+                          <CheckCircle2 className="w-4 h-4 text-primary shrink-0" />
+                          <span className="text-sm font-medium">{item}</span>
+                        </li>
+                      ))}
+                    </ul>
+
+                    <div className="space-y-4 pt-6 border-t border-white/5">
+                      <div className="relative">
+                        <select 
+                          value={selectedClass}
+                          onChange={(e) => setSelectedClass(e.target.value)}
+                          className="w-full h-14 pl-5 pr-12 rounded-xl bg-background border border-white/10 text-white font-bold text-sm outline-none appearance-none hover:border-white/20 cursor-pointer transition-all relative z-10"
+                        >
+                          <option value="" disabled className="text-white/40">Select Your Class</option>
+                          {WORLD_OF_WARCRAFT_CLASSES.map(cls => (
+                            <option key={cls} value={cls.toLowerCase()} className="text-white bg-[#1a1d23]">
+                              {cls}
+                            </option>
+                          ))}
+                        </select>
+                        <ChevronDown className="absolute right-5 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30 pointer-events-none" />
+                      </div>
+                      <button onClick={handleAddOneClass} className="w-full h-14 rounded-xl border-2 border-primary/30 text-white font-black tracking-widest uppercase text-sm hover:bg-primary hover:border-primary transition-all active:scale-95">Select Plan</button>
+                    </div>
+                  </div>
+
+                  <div className="p-10 rounded-3xl bg-[#3d1a2d] border-2 border-primary glow-primary-strong space-y-8 flex flex-col relative overflow-hidden">
+                    <div className="absolute top-0 left-1/2 -translate-x-1/2 bg-primary text-white text-[10px] font-black px-6 py-1.5 rounded-b-xl uppercase tracking-widest">
+                      Most Popular
+                    </div>
+
+                    <div>
+                      <h3 className="text-white/80 font-bold text-sm tracking-widest uppercase italic pt-2">AIO Access</h3>
+                      <p className="text-5xl font-black font-display text-white mt-1">$50<span className="text-xs">/mo</span></p>
+                    </div>
+
+                    <ul className="flex-1 space-y-4">
+                      {["All classes & specs", "Priority updates", "VIP Discord access", "Beta access"].map(item => (
+                        <li key={item} className="flex items-center gap-3 text-white/90">
+                          <CheckCircle2 className="w-5 h-5 text-primary shrink-0" />
+                          <span className="text-sm font-bold tracking-tight">{item}</span>
+                        </li>
+                      ))}
+                    </ul>
+
+                    <button onClick={handleAddAIO} className="w-full h-14 rounded-xl bg-primary text-white font-black tracking-widest uppercase text-sm shadow-xl shadow-primary/25 hover:bg-orange-600 active:scale-95 transition-all">Get AIO Access</button>
+                  </div>
+                </div>
+              </section>
+            </>
+          ) : view === 'dashboard' ? (
+            <Dashboard onUpgrade={() => {
+              if (userData?.plan === 'aio') {
+                alert("You are already on the highest plan!");
+                return;
+              }
+              handleAddAIO();
+            }} />
+          ) : view === 'admin' ? (
+            <AdminPanel />
+          ) : null}
+        </div>
       </main>
 
-      {/* Footer */}
       <footer className="py-20 border-t border-white/5 bg-background">
-        <div className="max-w-7xl mx-auto px-6 md:px-12 text-center space-y-8">
-          <div className="flex flex-col items-center gap-8">
-            <div className="flex items-center gap-3 text-white/40 grayscale opacity-80">
-              <Hexagon className="w-6 h-6" />
-              <span className="text-base font-bold tracking-tight">FAFO Rotations</span>
-            </div>
-            
-            <p className="max-w-md text-white/30 text-xs leading-relaxed font-medium uppercase tracking-widest">
-              © 2024 FAFO Rotations. For educational and automation purposes only. <br />
-              All rights reserved. Use at your own risk.
-            </p>
-
-            <div className="flex gap-8">
-              {['Terms of Service', 'Privacy Policy', 'Support'].map(link => (
-                <a key={link} href="#" className="text-xs font-bold text-white/30 hover:text-primary tracking-widest uppercase transition-colors">
-                  {link}
-                </a>
-              ))}
-            </div>
-          </div>
+        <div className="max-w-7xl mx-auto px-6 md:px-12 text-center text-white/20 text-[10px] font-bold uppercase tracking-[0.2em]">
+          © 2024 FAFO Rotations. All rights reserved.
         </div>
       </footer>
     </div>

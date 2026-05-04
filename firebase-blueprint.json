@@ -1,0 +1,42 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile and subscription data",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string", "format": "email" },
+        "discordId": { "type": "string", "description": "Discord User ID linked to the account" },
+        "plan": { "type": "string", "enum": ["aio", "single", "none"] },
+        "accountStatus": { "type": "string", "enum": ["active", "inactive", "expired"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "isAdmin": { "type": "boolean", "description": "Whether the user has admin privileges" }
+      },
+      "required": ["email", "plan", "accountStatus", "createdAt", "updatedAt"]
+    },
+    "Purchase": {
+      "title": "Purchase",
+      "description": "Historical record of payments",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "plan": { "type": "string", "enum": ["aio", "single"] },
+        "amount": { "type": "number" },
+        "status": { "type": "string", "enum": ["completed", "pending", "failed"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "plan", "amount", "status", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "Individual user profiles"
+    },
+    "/purchases/{purchaseId}": {
+      "schema": "Purchase",
+      "description": "Payment records"
+    }
+  }
+}

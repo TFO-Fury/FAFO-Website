@@ -1,0 +1,60 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Default Deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      // Safe check for isAdmin field on the user's document
+      let user = get(/databases/$(database)/documents/users/$(request.auth.uid));
+      return isSignedIn() && user != null && user.data.get('isAdmin', false) == true;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isValidUser(data) {
+      return data.email is string && data.email.size() <= 256 &&
+             data.plan in ['aio', 'single', 'none'] &&
+             data.accountStatus in ['active', 'inactive', 'expired'] &&
+             data.createdAt is timestamp &&
+             data.updatedAt is timestamp &&
+             (data.discordId == null || (data.discordId is string && data.discordId.size() <= 128)) &&
+             (data.isAdmin == null || data.isAdmin is bool);
+    }
+
+    // Collection Security
+    match /users/{userId} {
+      allow get: if isOwner(userId) || isAdmin();
+      allow list: if isAdmin();
+      
+      allow create: if isSignedIn() && isOwner(userId);
+
+      allow update: if isSignedIn() && (
+        isAdmin() || (
+          isOwner(userId) &&
+          // Owner can update their own profile fields
+          request.resource.data.diff(resource.data).affectedKeys().hasAny(['discordId', 'plan', 'accountStatus', 'updatedAt'])
+        )
+      );
+    }
+
+    match /purchases/{purchaseId} {
+      allow get: if isSignedIn() && (isAdmin() || resource.data.userId == request.auth.uid);
+      allow list: if isSignedIn() && (isAdmin() || resource.data.userId == request.auth.uid);
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+    }
+  }
+}
