@@ -392,7 +392,8 @@ export default function App() {
                           <button 
                             onClick={async () => {
                               try {
-                                const res = await fetch('/api/auth/discord/url');
+                                const roleTypes = Array.from(new Set(cart.map(i => i.type))).join(',');
+                                const res = await fetch(`/api/auth/discord/url?roleType=${roleTypes}`);
                                 if (!res.ok) throw new Error('Failed to get auth URL');
                                 const { url } = await res.json();
                                 
