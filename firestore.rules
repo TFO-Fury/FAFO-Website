@@ -26,13 +26,12 @@ service cloud.firestore {
     }
 
     function isValidUser(data) {
-      return data.email is string && data.email.size() <= 256 &&
-             data.plan in ['aio', 'single', 'none'] &&
+      return data.get('email', '') is string &&
+             data.plan in ['aio', 'single', 'none', 'trial'] &&
              data.accountStatus in ['active', 'inactive', 'expired'] &&
-             data.createdAt is timestamp &&
-             data.updatedAt is timestamp &&
              (data.discordId == null || (data.discordId is string && data.discordId.size() <= 128)) &&
-             (data.isAdmin == null || data.isAdmin is bool);
+             (data.isAdmin == null || data.isAdmin is bool) &&
+             (data.trialUsed == null || data.trialUsed is bool);
     }
 
     // Collection Security
@@ -46,7 +45,10 @@ service cloud.firestore {
         isAdmin() || (
           isOwner(userId) &&
           // Owner can update their own profile fields
-          request.resource.data.diff(resource.data).affectedKeys().hasAny(['discordId', 'plan', 'accountStatus', 'updatedAt'])
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['discordId', 'plan', 'accountStatus', 'updatedAt', 'trialUsed']) &&
+          // Cannot unset trialUsed once true
+          (resource.data.get('trialUsed', false) == false || request.resource.data.trialUsed == true) &&
+          isValidUser(request.resource.data)
         )
       );
     }

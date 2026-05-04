@@ -30,17 +30,26 @@ export function CheckoutModal({ isOpen, onClose, user, userData, cart, total, is
     try {
       setLoading(true);
       console.log("[CheckoutModal] Determining plan...");
-      const plan = cart.some(i => i.type === 'aio') ? 'aio' : 'single';
+      
+      const hasTrial = cart.some(i => i.type === 'trial');
+      const plan = hasTrial ? 'trial' : (cart.some(i => i.type === 'aio') ? 'aio' : 'single');
+      
       console.log(`[CheckoutModal] User: ${user.uid}, Plan: ${plan}`);
 
       // 1. Update Profile
       console.log("[CheckoutModal] Updating Firestore profile...");
       const userRef = doc(db, 'users', user.uid);
-      await setDoc(userRef, {
+      const updateData: any = {
         plan: plan,
         accountStatus: 'active',
         updatedAt: serverTimestamp()
-      }, { merge: true });
+      };
+      
+      if (hasTrial) {
+        updateData.trialUsed = true;
+      }
+      
+      await setDoc(userRef, updateData, { merge: true });
       console.log("[CheckoutModal] Profile update SUCCESS");
 
       // 2. Log Purchase

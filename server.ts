@@ -6,7 +6,7 @@ import * as admin from 'firebase-admin';
 import { initializeApp, getApps } from 'firebase-admin/app';
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 
-import firebaseConfig from "./firebase-applet-config.json";
+import firebaseConfig from "./firebase-applet-config.json" with { type: "json" };
 
 dotenv.config();
 
@@ -193,7 +193,10 @@ async function startServer() {
         const rolesToAssign = (roleType || '').split(',');
         
         for (const type of rolesToAssign) {
-          const roleId = type === 'aio' ? DISCORD_ROLE_AIO : (type === 'one-class' ? DISCORD_ROLE_ONE_CLASS : null);
+          let roleId = null;
+          if (type === 'aio') roleId = DISCORD_ROLE_AIO;
+          else if (type === 'one-class') roleId = DISCORD_ROLE_ONE_CLASS;
+          else if (type === 'trial') roleId = process.env.DISCORD_ROLE_TRIAL || '1501005403641876480';
           
           if (roleId) {
             try {

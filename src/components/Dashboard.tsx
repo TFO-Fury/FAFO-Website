@@ -57,8 +57,8 @@ export function Dashboard({ onUpgrade }: DashboardProps) {
 
   const handleLinkDiscord = async () => {
     try {
-      const roleType = userData?.plan === 'aio' ? 'aio' : 'one-class';
-      const res = await fetch(`/api/auth/discord/url?roleType=${roleType}`);
+      const roleType = userData?.plan === 'aio' ? 'aio' : (userData?.plan === 'trial' ? 'trial' : 'one-class');
+      const res = await fetch(`/api/auth/discord/url?roleType=${roleType}&userId=${auth.currentUser.uid}`);
       const { url } = await res.json();
       
       const width = 500;
@@ -102,8 +102,8 @@ export function Dashboard({ onUpgrade }: DashboardProps) {
           <div className="pt-6 border-t border-white/5 space-y-4">
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-white/30 uppercase tracking-widest">Plan</span>
-              <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${userData?.plan !== 'none' ? 'bg-primary/20 text-primary' : 'bg-white/5 text-white/30'}`}>
-                {userData?.plan === 'aio' ? 'All-In-One' : userData?.plan === 'single' ? 'Single Class' : 'No Active Plan'}
+              <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${userData?.plan && userData?.plan !== 'none' ? 'bg-primary/20 text-primary' : 'bg-white/5 text-white/30'}`}>
+                {userData?.plan === 'aio' ? 'All-In-One' : userData?.plan === 'single' ? 'Single Class' : userData?.plan === 'trial' ? '3-Day Trial' : 'No Active Plan'}
               </span>
             </div>
             <div className="flex items-center justify-between">
@@ -210,7 +210,7 @@ export function Dashboard({ onUpgrade }: DashboardProps) {
                 purchases.map((order) => (
                   <tr key={order.id} className="hover:bg-white/[0.02] transition-colors">
                     <td className="px-8 py-6">
-                      <span className="text-sm font-bold text-white uppercase tracking-tight">{order.plan} Access</span>
+                      <span className="text-sm font-bold text-white uppercase tracking-tight">{order.plan === 'trial' ? 'Free Trial' : `${order.plan} Access`}</span>
                     </td>
                     <td className="px-8 py-6">
                       <span className="text-sm font-black text-primary italic">${order.amount}</span>

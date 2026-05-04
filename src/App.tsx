@@ -52,7 +52,7 @@ type CartItem = {
   id: string;
   name: string;
   price: number;
-  type: 'one-class' | 'aio';
+  type: 'one-class' | 'aio' | 'trial';
   wowClass?: string;
 };
 
@@ -115,12 +115,20 @@ export default function App() {
   const addToCart = (item: CartItem) => {
     const isDuplicate = cart.find(i => 
       (i.type === 'aio' && item.type === 'aio') || 
+      (i.type === 'trial' && item.type === 'trial') ||
       (i.type === 'one-class' && item.type === 'one-class' && i.wowClass === item.wowClass)
     );
 
     if (isDuplicate) {
       console.log(`[Cart] Item already in cart: ${item.name}`);
       setLastAdded("Already in cart");
+      return;
+    }
+
+    // Trial limit check
+    if (item.type === 'trial' && userData?.trialUsed) {
+      console.log("[Cart] Trial already used");
+      setLastAdded("Trial already used");
       return;
     }
 
@@ -132,6 +140,19 @@ export default function App() {
 
   const removeFromCart = (id: string) => {
     setCart(prev => prev.filter(item => item.id !== id));
+  };
+
+  const handleAddTrial = () => {
+    if (userData?.trialUsed) {
+      alert("You have already used your 3-day trial.");
+      return;
+    }
+    addToCart({
+      id: `trial-${Date.now()}`,
+      name: "3-Day Free Trial",
+      price: 0,
+      type: 'trial'
+    });
   };
 
   const handleAddOneClass = () => {
@@ -484,62 +505,91 @@ export default function App() {
                   <h2 className="text-5xl md:text-6xl font-black font-display tracking-tighter uppercase italic">Choose Your Plan</h2>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-12 max-w-4xl mx-auto">
-                  <div className="p-10 rounded-3xl bg-surface-dark border border-white/5 space-y-8 flex flex-col">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-6xl mx-auto items-stretch">
+                  {/* Trial Plan */}
+                  <div className="p-8 rounded-3xl bg-surface-dark border border-white/5 space-y-8 flex flex-col hover:border-primary/20 transition-colors group">
                     <div>
-                      <h3 className="text-white/40 font-bold text-sm tracking-widest uppercase">One Class</h3>
-                      <p className="text-5xl font-black font-display text-white mt-1">$35<span className="text-xs">/mo</span></p>
+                      <div className="flex items-center justify-between mb-4">
+                        <h3 className="text-white/40 font-bold text-xs tracking-widest uppercase italic">New Users</h3>
+                        <div className="px-2 py-1 rounded bg-primary/10 border border-primary/20">
+                          <span className="text-[10px] text-primary font-black uppercase tracking-widest">3 Days</span>
+                        </div>
+                      </div>
+                      <p className="text-4xl font-black font-display text-white italic">FREE TRIAL</p>
+                      <p className="text-[10px] text-white/20 font-bold tracking-widest uppercase mt-2">No commitment</p>
                     </div>
 
-                    <ul className="flex-1 space-y-4">
-                      {["All specs for one class", "Fully optimized rotations", "Standard support", "Discord Role"].map(item => (
-                        <li key={item} className="flex items-center gap-3 text-white/70">
-                          <CheckCircle2 className="w-4 h-4 text-primary shrink-0" />
-                          <span className="text-sm font-medium">{item}</span>
+                    <ul className="flex-1 space-y-4 pt-4">
+                      {["Full AIO access", "3 day duration", "Standard support", "Trial Discord Role"].map(item => (
+                        <li key={item} className="flex items-center gap-3 text-white/50">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-primary/50 shrink-0" />
+                          <span className="text-xs font-medium tracking-tight">{item}</span>
                         </li>
                       ))}
                     </ul>
 
-                    <div className="space-y-4 pt-6 border-t border-white/5">
+                    <button 
+                      onClick={handleAddTrial}
+                      disabled={userData?.trialUsed}
+                      className="w-full h-14 rounded-xl border border-white/10 text-white font-black tracking-widest uppercase text-xs hover:bg-white/5 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                    >
+                      {userData?.trialUsed ? 'Trial Used' : 'Start Trial'}
+                    </button>
+                  </div>
+
+                  {/* One Class */}
+                  <div className="p-8 rounded-3xl bg-surface-dark border border-white/5 space-y-8 flex flex-col group hover:border-white/10 transition-colors">
+                    <div>
+                      <h3 className="text-white/40 font-bold text-xs tracking-widest uppercase italic mb-4">One Class</h3>
+                      <p className="text-4xl font-black font-display text-white italic">$35<span className="text-xs">/mo</span></p>
+                    </div>
+
+                    <ul className="flex-1 space-y-4 pt-4">
+                      {["All specs for one class", "Fully optimized rotations", "Standard support", "Discord Role"].map(item => (
+                        <li key={item} className="flex items-center gap-3 text-white/70">
+                          <CheckCircle2 className="w-4 h-4 text-primary shrink-0" />
+                          <span className="text-xs font-medium tracking-tight">{item}</span>
+                        </li>
+                      ))}
+                    </ul>
+
+                    <div className="space-y-3 pt-6 border-t border-white/5">
                       <div className="relative">
                         <select 
                           value={selectedClass}
                           onChange={(e) => setSelectedClass(e.target.value)}
-                          className="w-full h-14 pl-5 pr-12 rounded-xl bg-background border border-white/10 text-white font-bold text-sm outline-none appearance-none hover:border-white/20 cursor-pointer transition-all relative z-10"
+                          className="w-full h-12 pl-4 pr-10 rounded-xl bg-background border border-white/10 text-white font-bold text-xs outline-none appearance-none hover:border-white/20 cursor-pointer transition-all"
                         >
-                          <option value="" disabled className="text-white/40">Select Your Class</option>
+                          <option value="" disabled>Select Class</option>
                           {WORLD_OF_WARCRAFT_CLASSES.map(cls => (
-                            <option key={cls} value={cls.toLowerCase()} className="text-white bg-[#1a1d23]">
-                              {cls}
-                            </option>
+                            <option key={cls} value={cls.toLowerCase()} className="bg-[#1a1d23]">{cls}</option>
                           ))}
                         </select>
-                        <ChevronDown className="absolute right-5 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30 pointer-events-none" />
+                        <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-3 h-3 text-white/30 pointer-events-none" />
                       </div>
-                      <button onClick={handleAddOneClass} className="w-full h-14 rounded-xl border-2 border-primary/30 text-white font-black tracking-widest uppercase text-sm hover:bg-primary hover:border-primary transition-all active:scale-95">Select Plan</button>
+                      <button onClick={handleAddOneClass} className="w-full h-12 rounded-xl border-2 border-primary/30 text-white font-black tracking-widest uppercase text-xs hover:bg-primary hover:border-primary transition-all active:scale-95">Select Plan</button>
                     </div>
                   </div>
 
-                  <div className="p-10 rounded-3xl bg-[#3d1a2d] border-2 border-primary glow-primary-strong space-y-8 flex flex-col relative overflow-hidden">
-                    <div className="absolute top-0 left-1/2 -translate-x-1/2 bg-primary text-white text-[10px] font-black px-6 py-1.5 rounded-b-xl uppercase tracking-widest">
-                      Most Popular
-                    </div>
-
+                  {/* AIO Access */}
+                  <div className="p-8 rounded-3xl bg-[#2a121e]/50 border-2 border-primary glow-primary-strong space-y-8 flex flex-col relative overflow-hidden group">
+                    <div className="absolute top-0 right-0 bg-primary text-white text-[9px] font-black px-4 py-1 rounded-bl-xl uppercase tracking-widest">Popular</div>
+                    
                     <div>
-                      <h3 className="text-white/80 font-bold text-sm tracking-widest uppercase italic pt-2">AIO Access</h3>
-                      <p className="text-5xl font-black font-display text-white mt-1">$50<span className="text-xs">/mo</span></p>
+                      <h3 className="text-white/80 font-bold text-xs tracking-widest uppercase italic mb-4">AIO Access</h3>
+                      <p className="text-5xl font-black font-display text-white italic">$50<span className="text-xs">/mo</span></p>
                     </div>
 
-                    <ul className="flex-1 space-y-4">
+                    <ul className="flex-1 space-y-4 pt-4">
                       {["All classes & specs", "Priority updates", "VIP Discord access", "Beta access"].map(item => (
-                        <li key={item} className="flex items-center gap-3 text-white/90">
-                          <CheckCircle2 className="w-5 h-5 text-primary shrink-0" />
-                          <span className="text-sm font-bold tracking-tight">{item}</span>
+                        <li key={item} className="flex items-center gap-3 text-white">
+                          <CheckCircle2 className="w-4 h-4 text-primary shrink-0" />
+                          <span className="text-sm font-bold tracking-tight italic">{item}</span>
                         </li>
                       ))}
                     </ul>
 
-                    <button onClick={handleAddAIO} className="w-full h-14 rounded-xl bg-primary text-white font-black tracking-widest uppercase text-sm shadow-xl shadow-primary/25 hover:bg-orange-600 active:scale-95 transition-all">Get AIO Access</button>
+                    <button onClick={handleAddAIO} className="w-full h-14 rounded-xl bg-primary text-white font-black tracking-widest uppercase text-sm shadow-xl shadow-primary/25 hover:scale-[1.02] active:scale-95 transition-all">Get AIO Access</button>
                   </div>
                 </div>
               </section>
