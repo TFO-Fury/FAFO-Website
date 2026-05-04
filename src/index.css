@@ -1,0 +1,42 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Space Grotesk", sans-serif;
+
+  --color-primary: #ec5b13;
+  --color-background: #10131a;
+  --color-surface: #1d2026;
+  --color-surface-high: #272a31;
+  --color-surface-dark: #2d1421; /* Tinted surface from image */
+  
+  --radius-sm: 0.25rem;
+  --radius-md: 0.375rem;
+  --radius-lg: 0.5rem;
+  --radius-xl: 0.75rem;
+}
+
+@layer base {
+  body {
+    @apply bg-background text-white font-sans antialiased;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-display;
+  }
+}
+
+.glass {
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.glow-primary {
+  box-shadow: 0 0 20px rgba(236, 91, 19, 0.2);
+}
+
+.glow-primary-strong {
+  box-shadow: 0 0 40px rgba(236, 91, 19, 0.4);
+}
+
