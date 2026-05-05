@@ -60,8 +60,9 @@ async function startServer() {
 
     // Dynamic APP_URL detection
     const protocol = req.headers['x-forwarded-proto'] || req.protocol;
-    const host = req.headers['x-forwarded-host'] || req.get('host');
-    const detectedAppUrl = (process.env.APP_URL && !process.env.APP_URL.includes('localhost')) 
+    const host = req.get('host');
+    // Prefer the current host unless APP_URL is explicitly set to a non-localhost production URL
+    const detectedAppUrl = (process.env.APP_URL && !process.env.APP_URL.includes('localhost') && !process.env.APP_URL.includes('.run.app')) 
       ? APP_URL 
       : `${protocol}://${host}`;
 
@@ -75,7 +76,7 @@ async function startServer() {
     });
 
     const url = `https://discord.com/api/oauth2/authorize?${params.toString()}`;
-    console.log(`Generated Discord Auth URL for user ${userId}. Redirect URI: ${redirectUri}`);
+    console.log(`[API] Generated Discord Auth URL for user ${userId}. Origin: ${host}. Redirect URI: ${redirectUri}`);
     res.json({ url });
   });
 
@@ -88,51 +89,49 @@ async function startServer() {
     }
 
     try {
-      // 1. Update User Record
-      /* Moved to frontend due to backend permission constraints in this environment
-      const firestore = await getDb();
-      ...
-      */
-
       res.json({ success: true });
     } catch (error) {
       console.error("Payment Sync Error (Server):", error);
-      // We return success anyway because the frontend will perform its own update
       res.json({ success: true });
     }
   });
 
   // API: OAuth Internal Callback Handler
   app.get(["/auth/discord/callback", "/auth/discord/callback/"], async (req, res) => {
-    const { code, state } = req.query;
+    const { code, state, error, error_description } = req.query;
+
+    if (error) {
+      console.error("Discord Auth Error from Callback:", { error, error_description });
+      return res.status(400).send(`Discord Error: ${error_description || error}`);
+    }
 
     if (!code) {
-      return res.status(400).send("No code provided by Discord.");
+      return res.status(400).send("No code provided by Discord. Did you cancel the authorization?");
     }
 
     try {
       const stateStr = state as string;
       if (!stateStr || !stateStr.includes(':')) {
         console.error("Discord Auth Error: Invalid state parameter.", { state });
-        return res.status(400).send(`Invalid auth state: ${state}. This can happen if the login session timed out.`);
+        return res.status(400).send(`Invalid auth state. This can happen if you stayed too long on the Discord page. Please try again.`);
       }
 
       const [userId, roleType] = stateStr.split(':');
-      console.log(`Processing Discord auth callback. userId: ${userId}, roleType: ${roleType}`);
+      console.log(`[Discord] Processing callback. User: ${userId}, Role: ${roleType}`);
 
       if (!DISCORD_CLIENT_ID || !DISCORD_CLIENT_SECRET) {
-        throw new Error("Discord client configuration missing in environment");
+        throw new Error("Discord client configuration missing in environment. Contact Admin.");
       }
 
-      // Dynamic APP_URL detection for token exchange
+      // Exact same detection logic as the URL generator
       const protocol = req.headers['x-forwarded-proto'] || req.protocol;
-      const host = req.headers['x-forwarded-host'] || req.get('host');
-      const detectedAppUrl = (process.env.APP_URL && !process.env.APP_URL.includes('localhost')) 
+      const host = req.get('host');
+      const detectedAppUrl = (process.env.APP_URL && !process.env.APP_URL.includes('localhost') && !process.env.APP_URL.includes('.run.app')) 
         ? APP_URL 
         : `${protocol}://${host}`;
 
       const redirectUri = `${detectedAppUrl}/auth/discord/callback`;
-      console.log(`Exchanging code with redirect_uri: ${redirectUri}`);
+      console.log(`[Discord] Token Exchange. Host: ${host}, Redirect URI: ${redirectUri}`);
 
       const tokenResponse = await fetch('https://discord.com/api/oauth2/token', {
         method: 'POST',
@@ -148,34 +147,30 @@ async function startServer() {
 
       if (!tokenResponse.ok) {
         const errorData = await tokenResponse.json().catch(() => ({}));
-        const errorText = JSON.stringify(errorData) || await tokenResponse.text();
-        console.error("Discord Token Exchange Failed:", { 
+        console.error("[Discord] Token Exchange Failed:", { 
           status: tokenResponse.status, 
-          error: errorText 
+          error: errorData 
         });
-        throw new Error(`Token exchange failed (${tokenResponse.status}): ${errorText}`);
+        throw new Error(`Token exchange failed: ${errorData.error_description || errorData.error || 'Unknown error'}`);
       }
 
       const tokenData = await tokenResponse.json();
       const access_token = tokenData.access_token;
 
       // 2. Get User Profile
-      console.log("Fetching Discord user profile...");
       const userResponse = await fetch('https://discord.com/api/users/@me', {
         headers: { Authorization: `Bearer ${access_token}` },
       });
       
       if (!userResponse.ok) {
-        const errorText = await userResponse.text();
-        console.error("Discord Profile Fetch Failed:", { status: userResponse.status, error: errorText });
         throw new Error(`Failed to fetch Discord profile (${userResponse.status})`);
       }
 
-      const userData = await userResponse.json();
-      const discordUserId = userData.id;
-      console.log(`Discord account identified: ${userData.username} (${discordUserId})`);
+      const discordUser = await userResponse.json();
+      const discordUserId = discordUser.id;
+      console.log(`[Discord] Profile fetched: ${discordUser.username} (${discordUserId})`);
 
-      // 3. Store Discord ID in Firestore
+      // 3. Store Discord ID in Firestore (Admin Override)
       if (userId && userId !== 'undefined') {
         try {
           const firestore = await getDb();
@@ -183,9 +178,9 @@ async function startServer() {
             discordId: discordUserId,
             updatedAt: admin.firestore.FieldValue.serverTimestamp()
           }, { merge: true });
-          console.log(`[Server] Successfully linked Discord ID ${discordUserId} to user ${userId}`);
+          console.log(`[Discord] Saved link to Firestore for ${userId}`);
         } catch (err) {
-          console.error(`[Server] Failed to link Discord ID to firestore:`, err);
+          console.error(`[Discord] Firestore update error:`, err);
         }
       }
 

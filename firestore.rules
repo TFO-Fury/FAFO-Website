@@ -43,12 +43,16 @@ service cloud.firestore {
              (data.get('trialUsed', false) is bool);
     }
 
+    function isValidUserCreate(data) {
+      return isValidUser(data) && data.get('isAdmin', false) == false;
+    }
+
     // Collection Security
     match /users/{userId} {
       allow get: if isOwner(userId) || isAdmin();
       allow list: if isAdmin();
       
-      allow create: if isSignedIn() && isOwner(userId) && isValidUser(request.resource.data);
+      allow create: if isSignedIn() && isOwner(userId) && isValidUserCreate(request.resource.data);
 
       allow update: if isSignedIn() && (
         isAdmin() || (

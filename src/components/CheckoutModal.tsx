@@ -93,7 +93,13 @@ export function CheckoutModal({ isOpen, onClose, user, userData, cart, total, is
       const roleTypes = Array.from(new Set(cart.map(i => i.type))).join(',');
       const res = await fetch(`/api/auth/discord/url?roleType=${roleTypes}&userId=${user.uid}`);
       const { url } = await res.json();
-      window.open(url, 'discord_auth', 'width=500,height=750');
+      
+      const width = 500;
+      const height = 750;
+      const left = window.screenX + (window.outerWidth - width) / 2;
+      const top = window.screenY + (window.outerHeight - height) / 2;
+      
+      window.open(url, 'discord_auth', `width=${width},height=${height},left=${left},top=${top}`);
     } catch (err) {
       console.error("Discord link error:", err);
       alert("Failed to connect to Discord.");
