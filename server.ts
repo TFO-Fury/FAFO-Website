@@ -38,6 +38,12 @@ async function startServer() {
 
   app.use(express.json());
 
+  console.log("[Server] Starting with environment:");
+  console.log(` - NODE_ENV: ${process.env.NODE_ENV}`);
+  console.log(` - DISCORD_CLIENT_ID: ${process.env.DISCORD_CLIENT_ID ? 'SET' : 'MISSING'}`);
+  console.log(` - DISCORD_BOT_TOKEN: ${process.env.DISCORD_BOT_TOKEN ? 'SET' : 'MISSING'}`);
+  console.log(` - APP_URL: ${process.env.APP_URL || 'AUTO-DETECT'}`);
+
   // Discord OAuth Configuration
   const DISCORD_CLIENT_ID = process.env.DISCORD_CLIENT_ID;
   const DISCORD_CLIENT_SECRET = process.env.DISCORD_CLIENT_SECRET;
@@ -53,15 +59,14 @@ async function startServer() {
     res.json({ status: "healthy", timestamp: new Date().toISOString() });
   });
 
-  // API: Get Discord Auth URL (Moved up for priority)
+  // API: Get Discord Auth URL (Moved up for priority and logging)
   app.get("/api/auth/discord/url", (req, res) => {
-    console.log("[Discord] URL Request received at /api/auth/discord/url");
+    console.log("[Discord] URL Request received");
     
     if (!DISCORD_CLIENT_ID || !DISCORD_CLIENT_SECRET) {
-      console.error("[Discord] Logic Error: DISCORD_CLIENT_ID or SECRET is missing from environment");
-      return res.status(500).json({ 
-        error: "Discord OAuth credentials (ID/SECRET) are not configured in the server environment secrets." 
-      });
+      const error = "Discord OAuth credentials (ID/SECRET) are not configured in the server environment secrets.";
+      console.error("[Discord] Logic Error:", error);
+      return res.status(500).json({ error });
     }
 
     const { roleType, userId } = req.query;
@@ -92,8 +97,12 @@ async function startServer() {
     });
 
     const url = `https://discord.com/api/oauth2/authorize?${params.toString()}`;
-    console.log(`[Discord] Generated Auth URL. Host: ${host}, Redirect: ${redirectUri}, State: ${userId}:${roleType}`);
-    res.json({ url });
+    console.log(`[Discord] GENERATED AUTH URL`);
+    console.log(` - Host: ${host}`);
+    console.log(` - Redirect URI: ${redirectUri} (CRITICAL: THIS MUST BE IN DISCORD DASHBOARD)`);
+    console.log(` - State: ${userId}:${roleType}`);
+    
+    res.json({ url, redirectUri }); // Return redirectUri so UI can show it if error
   });
 
   // --- Synchronization Helpers ---
@@ -177,52 +186,7 @@ async function startServer() {
     }
   }
 
-  // --- CD Key API ---
-
-  // Admin: Generate Keys
-  app.post("/api/admin/keys/generate", async (req, res) => {
-    const { plan, count = 1, days = 30 } = req.body;
-    // Security: In a real app, verify admin session or token here
-    // For now, we trust the server-side context or a specific secret
-    
-    try {
-      const firestore = await getDb();
-      const batch = firestore.batch();
-      const keys: string[] = [];
-
-      for (let i = 0; i < count; i++) {
-        const key = `FAFO-${nanoid(12).toUpperCase()}`;
-        const keyRef = firestore.collection('cd_keys').doc(key);
-        
-        batch.set(keyRef, {
-          key,
-          plan,
-          status: 'unused',
-          createdAt: FieldValue.serverTimestamp(),
-          expiresInDays: days
-        });
-        keys.push(key);
-      }
-
-      await batch.commit();
-      res.json({ success: true, keys });
-    } catch (err) {
-      console.error("Key Gen Error:", err);
-      res.status(500).json({ error: "Failed to generate keys" });
-    }
-  });
-
-  // Admin: List All Keys
-  app.get("/api/admin/keys", async (req, res) => {
-    try {
-      const firestore = await getDb();
-      const snap = await firestore.collection('cd_keys').orderBy('createdAt', 'desc').get();
-      const keys = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      res.json({ keys });
-    } catch (err) {
-      res.status(500).json({ error: "Failed to fetch keys" });
-    }
-  });
+  // --- Administrative Support ---
 
   // Admin: Sync user roles
   app.post("/api/admin/user/sync-roles", async (req, res) => {
@@ -242,56 +206,6 @@ async function startServer() {
     } catch (err) {
       console.error("Sync Roles Error:", err);
       res.status(500).json({ error: "Failed to sync roles" });
-    }
-  });
-
-  // User: Activate Key
-  app.post("/api/keys/activate", async (req, res) => {
-    const { key, userId } = req.body;
-    if (!key || !userId) return res.status(400).json({ error: "Missing info" });
-
-    try {
-      const firestore = await getDb();
-      const keyRef = firestore.collection('cd_keys').doc(key);
-      const keyDoc = await keyRef.get();
-
-      if (!keyDoc.exists) return res.status(404).json({ error: "Invalid CD Key" });
-      const keyData = keyDoc.data();
-      
-      if (keyData?.status !== 'unused') return res.status(400).json({ error: "Key already active or revoked" });
-
-      const expirationDate = new Date();
-      expirationDate.setDate(expirationDate.getDate() + (keyData.expiresInDays || 30));
-
-      const batch = firestore.batch();
-      
-      // Update Key
-      batch.update(keyRef, {
-        status: 'active',
-        userId,
-        activatedAt: FieldValue.serverTimestamp(),
-        expiresAt: expirationDate
-      });
-
-      // Update User
-      const userRef = firestore.collection('users').doc(userId);
-      batch.update(userRef, {
-        plan: keyData.plan,
-        accountStatus: 'active',
-        expiresAt: expirationDate,
-        updatedAt: FieldValue.serverTimestamp()
-      });
-
-      await batch.commit();
-      
-      // Post-Activation Sync
-      syncDiscord(userId, keyData.plan);
-      syncGitHub(userId);
-
-      res.json({ success: true, plan: keyData.plan, expiresAt: expirationDate });
-    } catch (err) {
-      console.error("Activation Error:", err);
-      res.status(500).json({ error: "Activation failed" });
     }
   });
 

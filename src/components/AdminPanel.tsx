@@ -90,12 +90,28 @@ export function AdminPanel({ onViewUser }: AdminPanelProps) {
             </div>
           </div>
           
-          <div className="inline-flex items-center gap-2 px-4 py-2 bg-white/5 rounded-xl border border-white/5">
-            <UsersIcon className="w-3.5 h-3.5 text-primary" />
-            <span className="text-[10px] font-black uppercase tracking-widest text-white">
-              Users Found
-              <span className="ml-2 text-primary">[{users.length}]</span>
-            </span>
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="inline-flex items-center gap-2 px-4 py-2 bg-white/5 rounded-xl border border-white/5">
+              <UsersIcon className="w-3.5 h-3.5 text-primary" />
+              <span className="text-[10px] font-black uppercase tracking-widest text-white">
+                Total Users
+                <span className="ml-2 text-primary">[{users.length}]</span>
+              </span>
+            </div>
+            <div className="inline-flex items-center gap-2 px-4 py-2 bg-green-500/5 rounded-xl border border-green-500/10">
+              <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+              <span className="text-[10px] font-black uppercase tracking-widest text-green-500/60">
+                Active
+                <span className="ml-2 text-green-500">[{users.filter(u => u.accountStatus === 'active').length}]</span>
+              </span>
+            </div>
+            <div className="inline-flex items-center gap-2 px-4 py-2 bg-red-500/5 rounded-xl border border-red-500/10">
+              <div className="w-1.5 h-1.5 rounded-full bg-red-500/40" />
+              <span className="text-[10px] font-black uppercase tracking-widest text-red-500/60">
+                Inactive
+                <span className="ml-2 text-red-500">[{users.filter(u => u.accountStatus !== 'active').length}]</span>
+              </span>
+            </div>
           </div>
         </div>
 

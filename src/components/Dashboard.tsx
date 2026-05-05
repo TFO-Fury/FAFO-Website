@@ -198,7 +198,8 @@ export function Dashboard({ onUpgrade, targetUserId }: DashboardProps) {
       window.open(url, 'discord_auth', `width=${width},height=${height},left=${left},top=${top}`);
     } catch (err: any) {
       console.error(err);
-      alert(`Discord Link Error: ${err.message || "Failed to initiate link"}`);
+      const urlInfo = err.message.includes('Server returned') ? "\n\nTip: Contact admin to check if DISCORD_CLIENT_ID is configured." : "";
+      alert(`Discord Link Error: ${err.message || "Failed to initiate link"}${urlInfo}`);
     }
   };
 
@@ -259,7 +260,7 @@ export function Dashboard({ onUpgrade, targetUserId }: DashboardProps) {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Profile Card */}
-        <div className="p-8 rounded-[32px] bg-surface-dark border border-white/5 space-y-6 shadow-2xl">
+        <div className="p-8 rounded-[32px] bg-surface-dark border border-white/5 space-y-6 shadow-2xl lg:col-span-1">
           <div className="flex items-center gap-4">
             <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center text-primary border border-primary/10">
               <User className="w-8 h-8" />
@@ -339,85 +340,8 @@ export function Dashboard({ onUpgrade, targetUserId }: DashboardProps) {
           </div>
         </div>
 
-        {/* CD Key Activation Card */}
-        <div className="p-8 rounded-[32px] bg-surface-dark border border-white/5 shadow-2xl relative overflow-hidden group">
-          <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
-            <Ticket size={80} strokeWidth={1} />
-          </div>
-          
-          <div className="space-y-6 relative z-10">
-            <div className="flex items-center gap-4">
-              <div className="w-16 h-16 rounded-2xl bg-orange-500/10 flex items-center justify-center text-orange-500 border border-orange-500/10">
-                <Lock className="w-8 h-8" />
-              </div>
-              <div>
-                <p className="text-[10px] font-black text-white/40 uppercase tracking-[0.2em]">License Auth</p>
-                <p className="text-lg font-bold text-white tracking-tight">Manage Key</p>
-              </div>
-            </div>
-
-            <div className="space-y-4">
-              <div className="relative">
-                <input 
-                  type="text" 
-                  placeholder="FAFO-XXXX-XXXX-XXXX"
-                  value={activationCode}
-                  onChange={(e) => setActivationCode(e.target.value)}
-                  disabled={isActivating}
-                  className="w-full h-14 bg-background border border-white/10 rounded-2xl px-6 text-sm font-mono font-bold tracking-widest placeholder:text-white/10 outline-none focus:ring-2 focus:ring-primary/20 transition-all uppercase"
-                />
-                <button 
-                  onClick={handleActivateKey}
-                  disabled={isActivating || !activationCode.trim()}
-                  className="absolute right-2 top-2 h-10 px-6 rounded-xl bg-primary text-white text-[10px] font-black uppercase tracking-widest hover:bg-primary-dark transition-all disabled:opacity-30 active:scale-95 shadow-lg shadow-primary/20"
-                >
-                  {isActivating ? '...' : isAdminViewing ? 'Inject' : 'Unlock'}
-                </button>
-              </div>
-
-              <AnimatePresence>
-                {activationResult && (
-                  <motion.div 
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0 }}
-                    className={`p-4 rounded-xl text-[10px] font-bold uppercase tracking-widest flex items-center gap-3 border ${activationResult.success ? 'bg-green-500/10 text-green-500 border-green-500/20' : 'bg-red-500/10 text-red-500 border-red-500/20'}`}
-                  >
-                    {activationResult.success ? <CheckCircle2 className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
-                    {activationResult.message}
-                  </motion.div>
-                )}
-              </AnimatePresence>
-
-              {userKeys.length > 0 && (
-                <div className="pt-4 border-t border-white/5 space-y-3">
-                  <p className="text-[9px] font-black text-white/20 uppercase tracking-[0.3em]">Associated Keys</p>
-                  <div className="space-y-2">
-                    {userKeys.map(k => (
-                      <div key={k.id} className="flex items-center justify-between p-3 rounded-xl bg-white/[0.02] border border-white/5">
-                        <span className="text-[10px] font-mono font-bold text-white/50">{k.key}</span>
-                        {isAdminViewing ? (
-                          <button 
-                            onClick={() => handleRemoveKey(k.id)}
-                            className="p-1.5 rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white transition-all"
-                            title="Remove Key from User"
-                          >
-                            <Trash2 className="w-3 h-3" />
-                          </button>
-                        ) : (
-                          <span className="text-[9px] font-black uppercase text-primary/60">{k.plan}</span>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-
         {/* Discord Card */}
-        <div className="p-8 rounded-[32px] bg-surface-dark border border-white/5 flex flex-col justify-between space-y-6 shadow-2xl relative overflow-hidden group">
+        <div className="p-8 rounded-[32px] bg-surface-dark border border-white/5 flex flex-col justify-between space-y-6 shadow-2xl relative overflow-hidden group lg:col-span-2">
           <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
             <Hexagon size={80} strokeWidth={1} />
           </div>
