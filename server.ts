@@ -48,6 +48,54 @@ async function startServer() {
     APP_URL = APP_URL.slice(0, -1);
   }
 
+  // --- Diagnostic & Health ---
+  app.get("/api/health", (req, res) => {
+    res.json({ status: "healthy", timestamp: new Date().toISOString() });
+  });
+
+  // API: Get Discord Auth URL (Moved up for priority)
+  app.get("/api/auth/discord/url", (req, res) => {
+    console.log("[Discord] URL Request received at /api/auth/discord/url");
+    
+    if (!DISCORD_CLIENT_ID || !DISCORD_CLIENT_SECRET) {
+      console.error("[Discord] Logic Error: DISCORD_CLIENT_ID or SECRET is missing from environment");
+      return res.status(500).json({ 
+        error: "Discord OAuth credentials (ID/SECRET) are not configured in the server environment secrets." 
+      });
+    }
+
+    const { roleType, userId } = req.query;
+    if (!userId) {
+      console.error("[Discord] Request Error: userId missing from query");
+      return res.status(400).json({ error: "userId is required" });
+    }
+
+    // Dynamic APP_URL detection
+    const protocol = req.headers['x-forwarded-proto'] || req.protocol;
+    const host = req.get('host');
+    
+    // Safety: ensure we don't have double protocols
+    const cleanHost = host?.replace(/^https?:\/\//, '');
+    
+    // Prefer the current host unless APP_URL is explicitly set to a non-localhost production URL
+    const detectedAppUrl = (process.env.APP_URL && !process.env.APP_URL.includes('localhost') && !process.env.APP_URL.includes('.run.app')) 
+      ? APP_URL 
+      : `${protocol}://${cleanHost}`;
+
+    const redirectUri = `${detectedAppUrl}/auth/discord/callback`;
+    const params = new URLSearchParams({
+      client_id: DISCORD_CLIENT_ID,
+      redirect_uri: redirectUri,
+      response_type: "code",
+      scope: "identify guilds.join",
+      state: `${userId}:${roleType || 'one-class'}`
+    });
+
+    const url = `https://discord.com/api/oauth2/authorize?${params.toString()}`;
+    console.log(`[Discord] Generated Auth URL. Host: ${host}, Redirect: ${redirectUri}, State: ${userId}:${roleType}`);
+    res.json({ url });
+  });
+
   // --- Synchronization Helpers ---
   
   async function syncDiscord(userId: string, plan: string) {
@@ -245,49 +293,6 @@ async function startServer() {
       console.error("Activation Error:", err);
       res.status(500).json({ error: "Activation failed" });
     }
-  });
-
-  // API: Get Discord Auth URL
-  app.get("/api/auth/discord/url", (req, res) => {
-    console.log("[Discord] URL Request received");
-    
-    if (!DISCORD_CLIENT_ID || !DISCORD_CLIENT_SECRET) {
-      console.error("[Discord] Logic Error: DISCORD_CLIENT_ID or SECRET is missing from environment");
-      return res.status(500).json({ 
-        error: "Discord OAuth credentials (ID/SECRET) are not configured in the server environment secrets." 
-      });
-    }
-
-    const { roleType, userId } = req.query;
-    if (!userId) {
-      console.error("[Discord] Request Error: userId missing from query");
-      return res.status(400).json({ error: "userId is required" });
-    }
-
-    // Dynamic APP_URL detection
-    const protocol = req.headers['x-forwarded-proto'] || req.protocol;
-    const host = req.get('host');
-    
-    // Safety: ensure we don't have double protocols
-    const cleanHost = host?.replace(/^https?:\/\//, '');
-    
-    // Prefer the current host unless APP_URL is explicitly set to a non-localhost production URL
-    const detectedAppUrl = (process.env.APP_URL && !process.env.APP_URL.includes('localhost') && !process.env.APP_URL.includes('.run.app')) 
-      ? APP_URL 
-      : `${protocol}://${cleanHost}`;
-
-    const redirectUri = `${detectedAppUrl}/auth/discord/callback`;
-    const params = new URLSearchParams({
-      client_id: DISCORD_CLIENT_ID,
-      redirect_uri: redirectUri,
-      response_type: "code",
-      scope: "identify guilds.join",
-      state: `${userId}:${roleType || 'one-class'}`
-    });
-
-    const url = `https://discord.com/api/oauth2/authorize?${params.toString()}`;
-    console.log(`[Discord] Generated Auth URL. Host: ${host}, Redirect: ${redirectUri}, State: ${userId}:${roleType}`);
-    res.json({ url });
   });
 
   // API: Simulate Payment
