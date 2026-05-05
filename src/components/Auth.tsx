@@ -28,6 +28,7 @@ export function Auth({ onClose }: AuthProps) {
     const userDoc = await getDoc(userRef);
     
     if (!userDoc.exists()) {
+      console.log(`[Auth] Creating new user profile for ${user.email} (${user.uid})`);
       const userPath = `users/${user.uid}`;
       try {
         await setDoc(userRef, {
@@ -39,9 +40,13 @@ export function Auth({ onClose }: AuthProps) {
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp()
         });
+        console.log(`[Auth] User profile created successfully for ${user.uid}`);
       } catch (dbErr) {
+        console.error(`[Auth] Failed to create user profile for ${user.uid}:`, dbErr);
         handleFirestoreError(dbErr, OperationType.CREATE, userPath);
       }
+    } else {
+      console.log(`[Auth] User profile already exists for ${user.uid}`);
     }
   };
 

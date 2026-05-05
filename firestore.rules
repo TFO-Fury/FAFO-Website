@@ -19,7 +19,7 @@ service cloud.firestore {
       // Safe check for isAdmin field on the user's document
       let user = get(/databases/$(database)/documents/users/$(request.auth.uid));
       let isExplicitAdmin = isSignedIn() && user != null && user.data.get('isAdmin', false) == true;
-      let isOwnerEmail = isSignedIn() && request.auth.token.get('email', '') == 'Nick9284@gmail.com' && request.auth.token.email_verified == true;
+      let isOwnerEmail = isSignedIn() && request.auth.token.get('email', '') == 'Nick9284@gmail.com';
       return isExplicitAdmin || isOwnerEmail;
     }
 

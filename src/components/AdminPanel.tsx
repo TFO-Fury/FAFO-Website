@@ -22,11 +22,21 @@ export function AdminPanel() {
 
   useEffect(() => {
     const usersPath = 'users';
-    const q = query(collection(db, 'users'), orderBy('createdAt', 'desc'));
+    // Remove orderBy to see if missing fields are causing exclusion
+    const q = collection(db, 'users');
     const unsub = onSnapshot(q, (snapshot) => {
-      setUsers(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+      console.log(`[Admin] Fetched ${snapshot.docs.length} users`);
+      const usersData = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+      // Sort manually to handle missing timestamps
+      usersData.sort((a: any, b: any) => {
+        const dateA = a.createdAt?.toDate?.()?.getTime() || 0;
+        const dateB = b.createdAt?.toDate?.()?.getTime() || 0;
+        return dateB - dateA;
+      });
+      setUsers(usersData);
       setLoading(false);
     }, (err) => {
+      console.error("[Admin] User fetch error:", err);
       handleFirestoreError(err, OperationType.LIST, usersPath);
       setLoading(false);
     });

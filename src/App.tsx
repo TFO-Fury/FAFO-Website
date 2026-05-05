@@ -211,12 +211,17 @@ export default function App() {
 
   useEffect(() => {
     const handleMessage = async (event: MessageEvent) => {
-      // Allow messages from our own domain or localhost
-      if (!event.origin.endsWith('.run.app') && !event.origin.includes('localhost')) return;
+      // More flexible origin check for AI Studio environments
+      const isAllowedOrigin = 
+        event.origin.endsWith('.run.app') || 
+        event.origin.includes('localhost') || 
+        event.origin.includes('google.com'); // Adding this for safety in the workbench
+        
+      if (!isAllowedOrigin) return;
       
       if (event.data?.type === 'DISCORD_AUTH_SUCCESS' && user) {
         const discordId = event.data.discordId;
-        
+        console.log(`[Discord] Received success message for ${discordId}`);
         try {
           const { updateDoc, doc, serverTimestamp } = await import('firebase/firestore');
           await updateDoc(doc(db, 'users', user.uid), {

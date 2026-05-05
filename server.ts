@@ -176,12 +176,20 @@ async function startServer() {
       console.log(`Discord account identified: ${userData.username} (${discordUserId})`);
 
       // 3. Store Discord ID in Firestore
-      // Moved to frontend due to backend permission constraints in this environment
-      /*
       if (userId && userId !== 'undefined') {
-        ...
+        try {
+          const firestore = await getDb();
+          await firestore.collection('users').doc(userId).update({
+            discordId: discordUserId,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp()
+          });
+          console.log(`[Server] Successfully linked Discord ID ${discordUserId} to user ${userId}`);
+        } catch (err) {
+          console.error(`[Server] Failed to link Discord ID to firestore:`, err);
+          // Don't fail the whole request as the role assignment might still be useful
+          // and the frontend might still try to link.
+        }
       }
-      */
 
       // 4. Assign Role using Bot Token
       const DISCORD_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN;
