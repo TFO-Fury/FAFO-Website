@@ -73,7 +73,8 @@ export function Auth({ onClose }: AuthProps) {
 
     try {
       if (isLogin) {
-        await signInWithEmailAndPassword(auth, email, password);
+        const userCredential = await signInWithEmailAndPassword(auth, email, password);
+        await initUserProfile(userCredential.user);
       } else {
         const userCredential = await createUserWithEmailAndPassword(auth, email, password);
         await initUserProfile(userCredential.user);

@@ -179,15 +179,13 @@ async function startServer() {
       if (userId && userId !== 'undefined') {
         try {
           const firestore = await getDb();
-          await firestore.collection('users').doc(userId).update({
+          await firestore.collection('users').doc(userId).set({
             discordId: discordUserId,
             updatedAt: admin.firestore.FieldValue.serverTimestamp()
-          });
+          }, { merge: true });
           console.log(`[Server] Successfully linked Discord ID ${discordUserId} to user ${userId}`);
         } catch (err) {
           console.error(`[Server] Failed to link Discord ID to firestore:`, err);
-          // Don't fail the whole request as the role assignment might still be useful
-          // and the frontend might still try to link.
         }
       }
 

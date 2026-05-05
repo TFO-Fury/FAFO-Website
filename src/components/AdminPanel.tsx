@@ -132,12 +132,12 @@ export function AdminPanel() {
             {filteredUsers.map(user => (
               <tr key={user.id} className="hover:bg-white/[0.01] transition-colors group">
                 <td className="px-8 py-6">
-                  <div className="flex flex-col">
-                    <span className="text-sm font-bold text-white tracking-tight">{user.email}</span>
-                    <span className="text-[10px] text-white/20 font-black uppercase tracking-widest flex items-center gap-1.5 mt-1">
-                      {user.isAdmin && <ShieldAlert className="w-3 h-3 text-primary" />}
-                      {user.id}
-                    </span>
+                  <div className="flex flex-col gap-1">
+                    <span className="text-white font-bold text-sm tracking-tight">{user.email}</span>
+                    <div className="flex items-center gap-1.5 overflow-hidden">
+                      <span className="text-[9px] font-mono text-white/20 uppercase truncate max-w-[120px]">{user.id}</span>
+                      {user.isAdmin && <ShieldCheck className="w-3 h-3 text-primary flex-shrink-0" />}
+                    </div>
                   </div>
                 </td>
                 <td className="px-8 py-6">

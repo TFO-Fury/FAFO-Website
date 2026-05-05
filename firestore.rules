@@ -16,11 +16,14 @@ service cloud.firestore {
     }
 
     function isAdmin() {
-      // Safe check for isAdmin field on the user's document
-      let user = get(/databases/$(database)/documents/users/$(request.auth.uid));
-      let isExplicitAdmin = isSignedIn() && user != null && user.data.get('isAdmin', false) == true;
-      let isOwnerEmail = isSignedIn() && request.auth.token.get('email', '') == 'Nick9284@gmail.com';
-      return isExplicitAdmin || isOwnerEmail;
+      let reqAuth = request.auth;
+      let email = reqAuth.token.get('email', '').lower();
+      let isOwnerEmail = isSignedIn() && (email == 'nick9284@gmail.com');
+      return isOwnerEmail || (
+        isSignedIn() && 
+        exists(/databases/$(database)/documents/users/$(reqAuth.uid)) && 
+        get(/databases/$(database)/documents/users/$(reqAuth.uid)).data.get('isAdmin', false) == true
+      );
     }
 
     function isValidId(id) {
@@ -28,12 +31,16 @@ service cloud.firestore {
     }
 
     function isValidUser(data) {
-      return data.get('email', '') is string &&
-             data.plan in ['aio', 'single', 'none', 'trial'] &&
-             data.accountStatus in ['active', 'inactive', 'expired'] &&
-             (data.discordId == null || (data.discordId is string && data.discordId.size() <= 128)) &&
-             (data.isAdmin == null || data.isAdmin is bool) &&
-             (data.trialUsed == null || data.trialUsed is bool);
+      let email = data.get('email', '');
+      let plan = data.get('plan', 'none');
+      let status = data.get('accountStatus', 'inactive');
+      
+      return email is string && email.size() <= 100 &&
+             plan in ['aio', 'single', 'none', 'trial'] &&
+             status in ['active', 'inactive', 'expired'] &&
+             (data.get('discordId', null) == null || (data.discordId is string && data.discordId.size() <= 128)) &&
+             (data.get('isAdmin', false) is bool) &&
+             (data.get('trialUsed', false) is bool);
     }
 
     // Collection Security
@@ -41,15 +48,15 @@ service cloud.firestore {
       allow get: if isOwner(userId) || isAdmin();
       allow list: if isAdmin();
       
-      allow create: if isSignedIn() && isOwner(userId);
+      allow create: if isSignedIn() && isOwner(userId) && isValidUser(request.resource.data);
 
       allow update: if isSignedIn() && (
         isAdmin() || (
           isOwner(userId) &&
           // Owner can update their own profile fields
-          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['discordId', 'plan', 'accountStatus', 'updatedAt', 'trialUsed']) &&
-          // Cannot unset trialUsed once true
-          (resource.data.get('trialUsed', false) == false || request.resource.data.trialUsed == true) &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['discordId', 'plan', 'accountStatus', 'updatedAt', 'trialUsed', 'email', 'photoURL', 'uid', 'isAdmin']) &&
+          // Protect admin status
+          (request.resource.data.get('isAdmin', false) == resource.data.get('isAdmin', false)) &&
           isValidUser(request.resource.data)
         )
       );

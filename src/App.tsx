@@ -73,7 +73,9 @@ export default function App() {
   useEffect(() => {
     const unsubAuth = onAuthStateChanged(auth, (authUser) => {
       setUser(authUser);
-      if (!authUser) {
+      if (authUser) {
+        console.log(`[Auth] User signed in: ${authUser.email} (${authUser.uid})`);
+      } else {
         setUserData(null);
         setView('landing');
       }
@@ -215,7 +217,8 @@ export default function App() {
       const isAllowedOrigin = 
         event.origin.endsWith('.run.app') || 
         event.origin.includes('localhost') || 
-        event.origin.includes('google.com'); // Adding this for safety in the workbench
+        event.origin.includes('google.com') ||
+        event.origin.includes('webcontainer.io');
         
       if (!isAllowedOrigin) return;
       
@@ -232,7 +235,6 @@ export default function App() {
           setLastAdded("Account Linked!");
         } catch (err) {
           console.error("Failed to link discord client-side:", err);
-          alert("Discord linked, but failed to update profile. Please refresh.");
         }
       }
     };
@@ -282,14 +284,20 @@ export default function App() {
           </nav>
 
           <div className="flex items-center gap-4">
-            {((userData?.isAdmin) || (user?.email?.toLowerCase() === 'nick9284@gmail.com')) && (
-              <button 
-                onClick={() => setView('admin')}
-                className={`px-4 py-2 rounded-xl transition-all text-[10px] font-black uppercase tracking-widest border border-white shadow-2xl ${view === 'admin' ? 'bg-primary text-white shadow-lg shadow-primary/20 border-primary' : 'bg-primary/10 text-primary border-primary/20 hover:bg-primary hover:text-white'}`}
-              >
-                Admin
-              </button>
-            )}
+            {(() => {
+              const isAdmin = (userData?.isAdmin) || (user?.email?.toLowerCase() === 'nick9284@gmail.com');
+              if (isAdmin && user) {
+                console.log(`[Admin] Granting access for ${user.email}. IsExplicitAdmin: ${userData?.isAdmin}`);
+              }
+              return isAdmin && (
+                <button 
+                  onClick={() => setView('admin')}
+                  className={`px-4 py-2 rounded-xl transition-all text-[10px] font-black uppercase tracking-widest border border-white shadow-2xl ${view === 'admin' ? 'bg-primary text-white shadow-lg shadow-primary/20 border-primary' : 'bg-primary/10 text-primary border-primary/20 hover:bg-primary hover:text-white'}`}
+                >
+                  Admin
+                </button>
+              );
+            })()}
 
             <button 
               onClick={() => setIsCartOpen(true)}
