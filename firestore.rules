@@ -22,7 +22,7 @@ service cloud.firestore {
       return isOwnerEmail || (
         isSignedIn() && 
         exists(/databases/$(database)/documents/users/$(reqAuth.uid)) && 
-        get(/databases/$(database)/documents/users/$(reqAuth.uid)).data.get('isAdmin', false) == true
+        get(/databases/$(database)/documents/users/$(reqAuth.uid)).data.get('role', 'user') == 'admin'
       );
     }
 
@@ -34,17 +34,28 @@ service cloud.firestore {
       let email = data.get('email', '');
       let plan = data.get('plan', 'none');
       let status = data.get('accountStatus', 'inactive');
+      let role = data.get('role', 'user');
       
       return email is string && email.size() <= 100 &&
              plan in ['aio', 'single', 'none', 'trial'] &&
              status in ['active', 'inactive', 'expired'] &&
+             role in ['user', 'admin'] &&
              (data.get('discordId', null) == null || (data.discordId is string && data.discordId.size() <= 128)) &&
-             (data.get('isAdmin', false) is bool) &&
-             (data.get('trialUsed', false) is bool);
+             (data.get('trialUsed', false) is bool) &&
+             (data.get('entitlements', []) is list) &&
+             (data.get('expiresAt', null) == null || data.expiresAt is timestamp);
     }
 
     function isValidUserCreate(data) {
-      return isValidUser(data) && data.get('isAdmin', false) == false;
+      return isValidUser(data) && data.get('role', 'user') == 'user';
+    }
+
+    function isValidCDKey(data) {
+      return data.key is string &&
+             data.status in ['active', 'unused', 'revoked'] &&
+             data.plan in ['aio', 'single'] &&
+             (data.get('userId', null) == null || data.userId is string) &&
+             data.createdAt is timestamp;
     }
 
     // Collection Security
@@ -58,12 +69,21 @@ service cloud.firestore {
         isAdmin() || (
           isOwner(userId) &&
           // Owner can update their own profile fields
-          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['discordId', 'plan', 'accountStatus', 'updatedAt', 'trialUsed', 'email', 'photoURL', 'uid', 'isAdmin']) &&
-          // Protect admin status
-          (request.resource.data.get('isAdmin', false) == resource.data.get('isAdmin', false)) &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['discordId', 'plan', 'accountStatus', 'updatedAt', 'trialUsed', 'email', 'photoURL', 'uid', 'role', 'entitlements', 'expiresAt']) &&
+          // Protect role and entitlements and expiresAt (owners can't escalate themselves)
+          (request.resource.data.get('role', 'user') == resource.data.get('role', 'user')) &&
+          (request.resource.data.get('entitlements', []) == resource.data.get('entitlements', [])) &&
+          (request.resource.data.get('expiresAt', null) == resource.data.get('expiresAt', null)) &&
           isValidUser(request.resource.data)
         )
       );
+    }
+
+    match /cd_keys/{keyId} {
+      allow get: if isAdmin() || (isSignedIn() && exists(/databases/$(database)/documents/cd_keys/$(keyId)) && get(/databases/$(database)/documents/cd_keys/$(keyId)).data.userId == request.auth.uid);
+      allow list: if isAdmin();
+      // Writing to CD Keys is strictly Admin or Backend (via Admin SDK)
+      allow create, update, delete: if isAdmin();
     }
 
     match /purchases/{purchaseId} {

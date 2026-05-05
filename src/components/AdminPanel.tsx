@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
-import { collection, onSnapshot, doc, updateDoc, query, orderBy } from 'firebase/firestore';
+import { collection, onSnapshot, doc, updateDoc, deleteDoc, query, orderBy, limit } from 'firebase/firestore';
 import { 
   Search, 
   Edit3, 
@@ -8,10 +8,23 @@ import {
   X, 
   ShieldCheck, 
   Clock,
-  ShieldAlert
+  ShieldAlert,
+  Plus,
+  Trash2,
+  Lock,
+  ExternalLink,
+  Users as UsersIcon,
+  Ticket,
+  Ban,
+  Zap
 } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
 
-export function AdminPanel() {
+interface AdminPanelProps {
+  onViewUser: (userId: string) => void;
+}
+
+export function AdminPanel({ onViewUser }: AdminPanelProps) {
   const [users, setUsers] = useState<any[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterPlan, setFilterPlan] = useState('all');
@@ -21,13 +34,9 @@ export function AdminPanel() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const usersPath = 'users';
-    // Remove orderBy to see if missing fields are causing exclusion
-    const q = collection(db, 'users');
-    const unsub = onSnapshot(q, (snapshot) => {
-      console.log(`[Admin] Fetched ${snapshot.docs.length} users`);
+    // Listen to users
+    const unsubUsers = onSnapshot(collection(db, 'users'), (snapshot) => {
       const usersData = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-      // Sort manually to handle missing timestamps
       usersData.sort((a: any, b: any) => {
         const dateA = a.createdAt?.toDate?.()?.getTime() || 0;
         const dateB = b.createdAt?.toDate?.()?.getTime() || 0;
@@ -37,14 +46,13 @@ export function AdminPanel() {
       setLoading(false);
     }, (err) => {
       console.error("[Admin] User fetch error:", err);
-      handleFirestoreError(err, OperationType.LIST, usersPath);
       setLoading(false);
     });
-    return () => unsub();
+
+    return () => unsubUsers();
   }, []);
 
   const handleUpdateUser = async (userId: string) => {
-    const userPath = `users/${userId}`;
     try {
       const userRef = doc(db, 'users', userId);
       await updateDoc(userRef, {
@@ -53,8 +61,8 @@ export function AdminPanel() {
       });
       setEditingUser(null);
     } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, userPath);
-      alert("Failed to update user. Permissions likely denied.");
+      handleFirestoreError(err, OperationType.UPDATE, `users/${userId}`);
+      alert("Failed to update user.");
     }
   };
 
@@ -69,18 +77,26 @@ export function AdminPanel() {
   if (loading) return <div className="flex-1 flex items-center justify-center"><div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" /></div>;
 
   return (
-    <div className="max-w-7xl mx-auto px-6 md:px-12 py-12 space-y-8">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-        <div className="space-y-1">
+    <div className="max-w-7xl mx-auto px-6 md:px-12 py-12 space-y-12">
+      <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-8">
+        <div className="space-y-4">
           <div className="flex items-center gap-3">
-            <ShieldCheck className="w-8 h-8 text-primary" />
-            <h1 className="text-4xl font-black font-display uppercase italic tracking-tighter">Admin Core</h1>
-            <div className="flex items-center gap-2 px-3 py-1 bg-white/5 rounded-full border border-white/5">
-              <span className="text-[10px] font-black text-primary uppercase">{users.length}</span>
-              <span className="text-[10px] font-black text-white/20 uppercase tracking-widest">Total Users</span>
+            <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center border border-primary/20">
+              <ShieldCheck className="w-6 h-6 text-primary" />
+            </div>
+            <div>
+              <h1 className="text-4xl font-black font-display uppercase italic tracking-tighter leading-none">Admin Core</h1>
+              <p className="text-white/40 font-medium text-[10px] uppercase tracking-widest mt-1">Global User and Contract Management</p>
             </div>
           </div>
-          <p className="text-white/40 font-medium text-xs uppercase tracking-widest">Global user and contract management</p>
+          
+          <div className="inline-flex items-center gap-2 px-4 py-2 bg-white/5 rounded-xl border border-white/5">
+            <UsersIcon className="w-3.5 h-3.5 text-primary" />
+            <span className="text-[10px] font-black uppercase tracking-widest text-white">
+              Users Found
+              <span className="ml-2 text-primary">[{users.length}]</span>
+            </span>
+          </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-4">
@@ -97,19 +113,18 @@ export function AdminPanel() {
           <select 
             value={filterPlan} 
             onChange={(e) => setFilterPlan(e.target.value)}
-            className="h-12 px-5 rounded-xl bg-surface-dark border border-white/5 text-xs font-black uppercase tracking-widest outline-none cursor-pointer"
+            className="h-12 px-5 rounded-xl bg-surface-dark border border-white/5 text-[10px] font-black uppercase tracking-widest outline-none cursor-pointer"
           >
             <option value="all">All Plans</option>
             <option value="aio">AIO</option>
             <option value="single">Single</option>
-            <option value="none">None</option>
           </select>
           <select 
             value={filterStatus} 
             onChange={(e) => setFilterStatus(e.target.value)}
-            className="h-12 px-5 rounded-xl bg-surface-dark border border-white/5 text-xs font-black uppercase tracking-widest outline-none cursor-pointer"
+            className="h-12 px-5 rounded-xl bg-surface-dark border border-white/5 text-[10px] font-black uppercase tracking-widest outline-none cursor-pointer"
           >
-            <option value="all">All Status</option>
+            <option value="all">All States</option>
             <option value="active">Active</option>
             <option value="inactive">Inactive</option>
             <option value="expired">Expired</option>
@@ -117,13 +132,17 @@ export function AdminPanel() {
         </div>
       </div>
 
-      <div className="overflow-x-auto rounded-[32px] border border-white/5 bg-surface-dark shadow-2xl">
+      <motion.div 
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="overflow-x-auto rounded-[32px] border border-white/5 bg-surface-dark shadow-2xl overflow-hidden"
+      >
         <table className="w-full text-left border-collapse min-w-[1000px]">
           <thead>
             <tr className="bg-white/[0.02]">
               <th className="px-8 py-6 text-[10px] font-black text-white/20 uppercase tracking-[0.3em]">User Profile</th>
-              <th className="px-8 py-6 text-[10px] font-black text-white/20 uppercase tracking-[0.3em]">Contract Detail</th>
-              <th className="px-8 py-6 text-[10px] font-black text-white/20 uppercase tracking-[0.3em]">Integrations</th>
+              <th className="px-8 py-6 text-[10px] font-black text-white/20 uppercase tracking-[0.3em]">Subscription</th>
+              <th className="px-8 py-6 text-[10px] font-black text-white/20 uppercase tracking-[0.3em]">Linked Data</th>
               <th className="px-8 py-6 text-[10px] font-black text-white/20 uppercase tracking-[0.3em]">Created</th>
               <th className="px-8 py-6 text-[10px] font-black text-white/20 uppercase tracking-[0.3em]">Actions</th>
             </tr>
@@ -136,7 +155,7 @@ export function AdminPanel() {
                     <span className="text-white font-bold text-sm tracking-tight">{user.email}</span>
                     <div className="flex items-center gap-1.5 overflow-hidden">
                       <span className="text-[9px] font-mono text-white/20 uppercase truncate max-w-[120px]">{user.id}</span>
-                      {user.isAdmin && <ShieldCheck className="w-3 h-3 text-primary flex-shrink-0" />}
+                      {user.role === 'admin' && <ShieldCheck className="w-3 h-3 text-primary flex-shrink-0" />}
                     </div>
                   </div>
                 </td>
@@ -146,7 +165,7 @@ export function AdminPanel() {
                       <select 
                         value={editForm.plan} 
                         onChange={(e) => setEditForm({...editForm, plan: e.target.value})}
-                        className="w-full p-2 rounded-lg bg-background border border-white/10 text-xs font-bold uppercase"
+                        className="w-full h-9 rounded-lg bg-background border border-white/10 text-xs font-bold uppercase px-3"
                       >
                         <option value="none">None</option>
                         <option value="trial">Trial</option>
@@ -156,43 +175,55 @@ export function AdminPanel() {
                       <select 
                         value={editForm.accountStatus} 
                         onChange={(e) => setEditForm({...editForm, accountStatus: e.target.value})}
-                        className="w-full p-2 rounded-lg bg-background border border-white/10 text-xs font-bold uppercase"
+                        className="w-full h-9 rounded-lg bg-background border border-white/10 text-xs font-bold uppercase px-3"
                       >
-                        <option value="inactive">Inactive</option>
                         <option value="active">Active</option>
+                        <option value="inactive">Inactive</option>
                         <option value="expired">Expired</option>
                       </select>
-                      <div className="flex items-center gap-2 pt-1">
-                        <input 
-                          type="checkbox"
-                          id={`isAdmin-${user.id}`}
-                          checked={editForm.isAdmin || false}
-                          onChange={(e) => setEditForm({...editForm, isAdmin: e.target.checked})}
-                          className="w-4 h-4 rounded border-white/10 bg-background accent-primary"
-                        />
-                        <label htmlFor={`isAdmin-${user.id}`} className="text-[10px] font-black uppercase text-white/40">Is Admin</label>
-                      </div>
+                      <select 
+                        value={editForm.role} 
+                        onChange={(e) => setEditForm({...editForm, role: e.target.value})}
+                        className="w-full h-9 rounded-lg bg-background border border-white/10 text-xs font-bold uppercase px-3"
+                      >
+                        <option value="user">User</option>
+                        <option value="admin">Admin</option>
+                      </select>
                     </div>
                   ) : (
                     <div className="flex flex-col gap-1.5">
-                      <span className={`w-fit px-2.5 py-0.5 rounded text-[9px] font-black uppercase tracking-widest ${user.plan !== 'none' ? 'bg-primary/20 text-primary' : 'bg-white/5 text-white/40'}`}>
+                      <span className={`w-fit px-2.5 py-0.5 rounded text-[9px] font-black uppercase tracking-widest ${user.plan !== 'none' ? 'bg-primary/20 text-primary border border-primary/20' : 'bg-white/5 text-white/40'}`}>
                         {user.plan}
                       </span>
                       <span className={`text-[10px] font-bold uppercase tracking-tight ${user.accountStatus === 'active' ? 'text-green-500' : 'text-red-500'}`}>
                         {user.accountStatus}
                       </span>
+                      {user.expiresAt && (
+                        <span className="text-[10px] text-white/20 font-bold uppercase tabular-nums">
+                          Expires: {user.expiresAt?.toDate().toLocaleDateString()}
+                        </span>
+                      )}
                     </div>
                   )}
                 </td>
                 <td className="px-8 py-6">
-                  <div className="flex flex-col gap-1">
-                    <span className="text-xs font-medium text-white/60">Discord: <span className={user.discordId ? "text-primary font-bold" : "text-white/20 italic"}>{user.discordId || 'Not Linked'}</span></span>
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-black text-white/20 uppercase tracking-widest">Discord</span>
+                      <span className={user.discordId ? "text-[11px] text-primary font-bold" : "text-[11px] text-white/20 italic"}>{user.discordId || 'Not Linked'}</span>
+                    </div>
+                    {user.entitlements?.length > 0 && (
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-black text-white/20 uppercase tracking-widest">Entitled</span>
+                        <span className="text-[10px] text-white/60 font-bold">{user.entitlements.length} Slots</span>
+                      </div>
+                    )}
                   </div>
                 </td>
                 <td className="px-8 py-6">
                   <div className="flex items-center gap-2 text-white/30">
-                    <Clock className="w-3 h-3" />
-                    <span className="text-xs font-medium">{user.createdAt?.toDate?.()?.toLocaleDateString() || 'N/A'}</span>
+                    <Clock className="w-3.5 h-3.5" />
+                    <span className="text-[11px] font-medium tabular-nums">{user.createdAt?.toDate?.()?.toLocaleDateString() || 'N/A'}</span>
                   </div>
                 </td>
                 <td className="px-8 py-6">
@@ -201,31 +232,40 @@ export function AdminPanel() {
                       <>
                         <button 
                           onClick={() => handleUpdateUser(user.id)}
-                          className="p-2 rounded-lg bg-green-500/20 text-green-500 hover:bg-green-500 hover:text-white transition-all shadow-lg shadow-green-500/10"
+                          className="p-2.5 rounded-xl bg-green-500/20 text-green-500 hover:bg-green-500 hover:text-white transition-all shadow-lg shadow-green-500/10"
                         >
                           <Save className="w-4 h-4" />
                         </button>
                         <button 
                           onClick={() => setEditingUser(null)}
-                          className="p-2 rounded-lg bg-white/5 text-white/40 hover:bg-white/10 transition-all font-bold"
+                          className="p-2.5 rounded-xl bg-white/5 text-white/40 hover:bg-white/10 transition-all font-bold"
                         >
                           <X className="w-4 h-4" />
                         </button>
                       </>
                     ) : (
-                      <button 
-                        onClick={() => {
-                          setEditingUser(user.id);
-                          setEditForm({ 
-                            plan: user.plan, 
-                            accountStatus: user.accountStatus,
-                            isAdmin: user.isAdmin || false
-                          });
-                        }}
-                        className="p-2 rounded-lg bg-white/5 text-white/40 opacity-0 group-hover:opacity-100 hover:bg-white/10 transition-all shadow-xl"
-                      >
-                        <Edit3 className="w-4 h-4" />
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button 
+                          onClick={() => onViewUser(user.id)}
+                          className="px-4 py-2 rounded-xl bg-primary/10 text-primary text-[10px] font-black uppercase tracking-widest hover:bg-primary hover:text-white transition-all shadow-xl opacity-0 group-hover:opacity-100 flex items-center gap-2"
+                        >
+                          <Zap className="w-3.5 h-3.5" />
+                          Adjust
+                        </button>
+                        <button 
+                          onClick={() => {
+                            setEditingUser(user.id);
+                            setEditForm({ 
+                              plan: user.plan, 
+                              accountStatus: user.accountStatus,
+                              role: user.role || 'user'
+                            });
+                          }}
+                          className="p-2.5 rounded-xl bg-white/5 text-white/40 opacity-0 group-hover:opacity-100 hover:bg-white/10 transition-all shadow-xl"
+                        >
+                          <Edit3 className="w-4 h-4" />
+                        </button>
+                      </div>
                     )}
                   </div>
                 </td>
@@ -233,7 +273,7 @@ export function AdminPanel() {
             ))}
           </tbody>
         </table>
-      </div>
+      </motion.div>
     </div>
   );
 }

@@ -5,6 +5,8 @@ import dotenv from "dotenv";
 import * as admin from 'firebase-admin';
 import { initializeApp, getApps } from 'firebase-admin/app';
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
+import { nanoid } from 'nanoid';
+import { Octokit } from 'octokit';
 
 import firebaseConfig from "./firebase-applet-config.json" with { type: "json" };
 
@@ -46,25 +48,233 @@ async function startServer() {
     APP_URL = APP_URL.slice(0, -1);
   }
 
+  // --- Synchronization Helpers ---
+  
+  async function syncDiscord(userId: string, plan: string) {
+    const firestore = await getDb();
+    const userDoc = await firestore.collection('users').doc(userId).get();
+    if (!userDoc.exists) return;
+    
+    const userData = userDoc.data();
+    const discordId = userData?.discordId;
+    if (!discordId) return;
+
+    const botToken = process.env.DISCORD_BOT_TOKEN;
+    const guildId = process.env.DISCORD_GUILD_ID;
+    if (!botToken || !guildId) return;
+
+    let roleId = null;
+    if (plan === 'aio') roleId = process.env.DISCORD_ROLE_AIO;
+    else if (plan === 'single') roleId = process.env.DISCORD_ROLE_ONE_CLASS;
+    else if (plan === 'trial') roleId = process.env.DISCORD_ROLE_TRIAL || '1501005403641876480';
+    
+    if (roleId) {
+      try {
+        await fetch(`https://discord.com/api/guilds/${guildId}/members/${discordId}/roles/${roleId}`, {
+          method: 'PUT',
+          headers: { 
+            Authorization: `Bot ${botToken}`,
+            'Content-Type': 'application/json'
+          },
+        });
+        console.log(`[Sync] Assigned role ${roleId} to Discord user ${discordId}`);
+      } catch (err) {
+        console.error(`[Sync] Failed to assign role:`, err);
+      }
+    }
+  }
+
+  async function syncGitHub(userId: string) {
+    const ghToken = process.env.GITHUB_TOKEN;
+    const owner = process.env.GITHUB_OWNER;
+    const repo = process.env.GITHUB_REPO;
+    const path = process.env.GITHUB_FILE_PATH || 'licensing/users.lua';
+
+    if (!ghToken || !owner || !repo) {
+      console.log("[Sync] GitHub credentials missing, skipping file update.");
+      return;
+    }
+
+    try {
+      const firestore = await getDb();
+      const usersSnap = await firestore.collection('users').where('accountStatus', '==', 'active').get();
+      let luaContent = "-- Generated License File\nlocal licenses = {\n";
+      
+      usersSnap.forEach(doc => {
+        const data = doc.data();
+        if (data.plan !== 'none') {
+          luaContent += `  ["${doc.id}"] = { plan = "${data.plan}", expires = ${data.expiresAt?.seconds || 0} },\n`;
+        }
+      });
+      luaContent += "}\nreturn licenses";
+
+      const octokit = new Octokit({ auth: ghToken });
+      
+      // Get current file sha
+      let sha: string | undefined;
+      try {
+        const { data: fileData } = await octokit.rest.repos.getContent({ owner, repo, path });
+        if (!Array.isArray(fileData)) sha = fileData.sha;
+      } catch (e) {}
+
+      await octokit.rest.repos.createOrUpdateFileContents({
+        owner, repo, path,
+        message: `Sync licenses - User ${userId}`,
+        content: Buffer.from(luaContent).toString('base64'),
+        sha
+      });
+      console.log(`[Sync] Updated GitHub license file.`);
+    } catch (err) {
+      console.error(`[Sync] GitHub error:`, err);
+    }
+  }
+
+  // --- CD Key API ---
+
+  // Admin: Generate Keys
+  app.post("/api/admin/keys/generate", async (req, res) => {
+    const { plan, count = 1, days = 30 } = req.body;
+    // Security: In a real app, verify admin session or token here
+    // For now, we trust the server-side context or a specific secret
+    
+    try {
+      const firestore = await getDb();
+      const batch = firestore.batch();
+      const keys: string[] = [];
+
+      for (let i = 0; i < count; i++) {
+        const key = `FAFO-${nanoid(12).toUpperCase()}`;
+        const keyRef = firestore.collection('cd_keys').doc(key);
+        
+        batch.set(keyRef, {
+          key,
+          plan,
+          status: 'unused',
+          createdAt: FieldValue.serverTimestamp(),
+          expiresInDays: days
+        });
+        keys.push(key);
+      }
+
+      await batch.commit();
+      res.json({ success: true, keys });
+    } catch (err) {
+      console.error("Key Gen Error:", err);
+      res.status(500).json({ error: "Failed to generate keys" });
+    }
+  });
+
+  // Admin: List All Keys
+  app.get("/api/admin/keys", async (req, res) => {
+    try {
+      const firestore = await getDb();
+      const snap = await firestore.collection('cd_keys').orderBy('createdAt', 'desc').get();
+      const keys = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      res.json({ keys });
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch keys" });
+    }
+  });
+
+  // Admin: Sync user roles
+  app.post("/api/admin/user/sync-roles", async (req, res) => {
+    const { userId } = req.body;
+    if (!userId) return res.status(400).json({ error: "userId is required" });
+    
+    try {
+      const firestore = await getDb();
+      const userDoc = await firestore.collection('users').doc(userId).get();
+      if (!userDoc.exists) return res.status(404).json({ error: "User not found" });
+      
+      const userData = userDoc.data();
+      const plan = userData?.plan || 'none';
+      
+      await syncDiscord(userId, plan);
+      res.json({ success: true });
+    } catch (err) {
+      console.error("Sync Roles Error:", err);
+      res.status(500).json({ error: "Failed to sync roles" });
+    }
+  });
+
+  // User: Activate Key
+  app.post("/api/keys/activate", async (req, res) => {
+    const { key, userId } = req.body;
+    if (!key || !userId) return res.status(400).json({ error: "Missing info" });
+
+    try {
+      const firestore = await getDb();
+      const keyRef = firestore.collection('cd_keys').doc(key);
+      const keyDoc = await keyRef.get();
+
+      if (!keyDoc.exists) return res.status(404).json({ error: "Invalid CD Key" });
+      const keyData = keyDoc.data();
+      
+      if (keyData?.status !== 'unused') return res.status(400).json({ error: "Key already active or revoked" });
+
+      const expirationDate = new Date();
+      expirationDate.setDate(expirationDate.getDate() + (keyData.expiresInDays || 30));
+
+      const batch = firestore.batch();
+      
+      // Update Key
+      batch.update(keyRef, {
+        status: 'active',
+        userId,
+        activatedAt: FieldValue.serverTimestamp(),
+        expiresAt: expirationDate
+      });
+
+      // Update User
+      const userRef = firestore.collection('users').doc(userId);
+      batch.update(userRef, {
+        plan: keyData.plan,
+        accountStatus: 'active',
+        expiresAt: expirationDate,
+        updatedAt: FieldValue.serverTimestamp()
+      });
+
+      await batch.commit();
+      
+      // Post-Activation Sync
+      syncDiscord(userId, keyData.plan);
+      syncGitHub(userId);
+
+      res.json({ success: true, plan: keyData.plan, expiresAt: expirationDate });
+    } catch (err) {
+      console.error("Activation Error:", err);
+      res.status(500).json({ error: "Activation failed" });
+    }
+  });
+
   // API: Get Discord Auth URL
   app.get("/api/auth/discord/url", (req, res) => {
-    if (!DISCORD_CLIENT_ID) {
-      console.error("Discord Auth Config Error: DISCORD_CLIENT_ID is missing");
-      return res.status(500).json({ error: "DISCORD_CLIENT_ID not configured" });
+    console.log("[Discord] URL Request received");
+    
+    if (!DISCORD_CLIENT_ID || !DISCORD_CLIENT_SECRET) {
+      console.error("[Discord] Logic Error: DISCORD_CLIENT_ID or SECRET is missing from environment");
+      return res.status(500).json({ 
+        error: "Discord OAuth credentials (ID/SECRET) are not configured in the server environment secrets." 
+      });
     }
 
     const { roleType, userId } = req.query;
     if (!userId) {
+      console.error("[Discord] Request Error: userId missing from query");
       return res.status(400).json({ error: "userId is required" });
     }
 
     // Dynamic APP_URL detection
     const protocol = req.headers['x-forwarded-proto'] || req.protocol;
     const host = req.get('host');
+    
+    // Safety: ensure we don't have double protocols
+    const cleanHost = host?.replace(/^https?:\/\//, '');
+    
     // Prefer the current host unless APP_URL is explicitly set to a non-localhost production URL
     const detectedAppUrl = (process.env.APP_URL && !process.env.APP_URL.includes('localhost') && !process.env.APP_URL.includes('.run.app')) 
       ? APP_URL 
-      : `${protocol}://${host}`;
+      : `${protocol}://${cleanHost}`;
 
     const redirectUri = `${detectedAppUrl}/auth/discord/callback`;
     const params = new URLSearchParams({
@@ -76,7 +286,7 @@ async function startServer() {
     });
 
     const url = `https://discord.com/api/oauth2/authorize?${params.toString()}`;
-    console.log(`[API] Generated Discord Auth URL for user ${userId}. Origin: ${host}. Redirect URI: ${redirectUri}`);
+    console.log(`[Discord] Generated Auth URL. Host: ${host}, Redirect: ${redirectUri}, State: ${userId}:${roleType}`);
     res.json({ url });
   });
 

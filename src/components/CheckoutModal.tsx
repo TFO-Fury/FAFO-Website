@@ -34,7 +34,10 @@ export function CheckoutModal({ isOpen, onClose, user, userData, cart, total, is
       const hasTrial = cart.some(i => i.type === 'trial');
       const plan = hasTrial ? 'trial' : (cart.some(i => i.type === 'aio') ? 'aio' : 'single');
       
-      console.log(`[CheckoutModal] User: ${user.uid}, Plan: ${plan}`);
+      const expirationDate = new Date();
+      expirationDate.setDate(expirationDate.getDate() + (hasTrial ? 3 : 30));
+      
+      console.log(`[CheckoutModal] User: ${user.uid}, Plan: ${plan}, Expires: ${expirationDate}`);
 
       // 1. Update Profile
       console.log("[CheckoutModal] Updating Firestore profile...");
@@ -42,6 +45,7 @@ export function CheckoutModal({ isOpen, onClose, user, userData, cart, total, is
       const updateData: any = {
         plan: plan,
         accountStatus: 'active',
+        expiresAt: expirationDate,
         updatedAt: serverTimestamp()
       };
       
@@ -92,6 +96,12 @@ export function CheckoutModal({ isOpen, onClose, user, userData, cart, total, is
       setIsDiscordLoading(true);
       const roleTypes = Array.from(new Set(cart.map(i => i.type))).join(',');
       const res = await fetch(`/api/auth/discord/url?roleType=${roleTypes}&userId=${user.uid}`);
+      
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || `Server returned ${res.status}`);
+      }
+
       const { url } = await res.json();
       
       const width = 500;
@@ -100,9 +110,9 @@ export function CheckoutModal({ isOpen, onClose, user, userData, cart, total, is
       const top = window.screenY + (window.outerHeight - height) / 2;
       
       window.open(url, 'discord_auth', `width=${width},height=${height},left=${left},top=${top}`);
-    } catch (err) {
+    } catch (err: any) {
       console.error("Discord link error:", err);
-      alert("Failed to connect to Discord.");
+      alert(`Discord Link Error: ${err.message || "Failed to connect to Discord"}`);
     } finally {
       setIsDiscordLoading(false);
     }

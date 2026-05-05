@@ -11,9 +11,30 @@
         "accountStatus": { "type": "string", "enum": ["active", "inactive", "expired"] },
         "createdAt": { "type": "string", "format": "date-time" },
         "updatedAt": { "type": "string", "format": "date-time" },
-        "isAdmin": { "type": "boolean", "description": "Whether the user has admin privileges" }
+        "role": { "type": "string", "enum": ["user", "admin"] },
+        "expiresAt": { "type": "string", "format": "date-time" },
+        "entitlements": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "List of purchased rotation IDs"
+        }
       },
-      "required": ["email", "plan", "accountStatus", "createdAt", "updatedAt"]
+      "required": ["email", "plan", "accountStatus", "createdAt", "updatedAt", "role"]
+    },
+    "CDKey": {
+      "title": "CDKey",
+      "description": "License key for the software",
+      "type": "object",
+      "properties": {
+        "key": { "type": "string" },
+        "userId": { "type": "string" },
+        "status": { "type": "string", "enum": ["active", "unused", "revoked"] },
+        "plan": { "type": "string", "enum": ["aio", "single"] },
+        "expiresAt": { "type": "string", "format": "date-time" },
+        "lastUsedAt": { "type": "string", "format": "date-time" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["key", "status", "plan", "createdAt"]
     },
     "Purchase": {
       "title": "Purchase",
@@ -33,6 +54,10 @@
     "/users/{userId}": {
       "schema": "User",
       "description": "Individual user profiles"
+    },
+    "/cd_keys/{keyId}": {
+      "schema": "CDKey",
+      "description": "License keys"
     },
     "/purchases/{purchaseId}": {
       "schema": "Purchase",

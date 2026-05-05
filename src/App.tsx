@@ -56,12 +56,13 @@ type CartItem = {
   wowClass?: string;
 };
 
-type View = 'landing' | 'dashboard' | 'admin';
+type View = 'landing' | 'dashboard' | 'admin' | 'view-user';
 
 export default function App() {
   const [user, setUser] = useState<any>(null);
   const [userData, setUserData] = useState<any>(null);
   const [view, setView] = useState<View>('landing');
+  const [adminTargetUserId, setAdminTargetUserId] = useState<string | null>(null);
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [selectedClass, setSelectedClass] = useState("");
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -616,8 +617,16 @@ export default function App() {
               }
               handleAddAIO();
             }} />
+          ) : view === 'view-user' ? (
+            <Dashboard 
+              targetUserId={adminTargetUserId}
+              onUpgrade={() => alert("Upgrading other users via cart is not supported. Use admin controls instead.")} 
+            />
           ) : view === 'admin' ? (
-            <AdminPanel />
+            <AdminPanel onViewUser={(userId) => {
+              setAdminTargetUserId(userId);
+              setView('view-user');
+            }} />
           ) : null}
         </div>
       </main>
