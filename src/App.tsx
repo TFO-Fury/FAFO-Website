@@ -277,6 +277,15 @@ export default function App() {
           </nav>
 
           <div className="flex items-center gap-4">
+            {((userData?.isAdmin) || (user?.email?.toLowerCase() === 'nick9284@gmail.com')) && (
+              <button 
+                onClick={() => setView('admin')}
+                className={`px-4 py-2 rounded-xl transition-all text-[10px] font-black uppercase tracking-widest border border-white shadow-2xl ${view === 'admin' ? 'bg-primary text-white shadow-lg shadow-primary/20 border-primary' : 'bg-primary/10 text-primary border-primary/20 hover:bg-primary hover:text-white'}`}
+              >
+                Admin
+              </button>
+            )}
+
             <button 
               onClick={() => setIsCartOpen(true)}
               className="relative p-2 text-white/70 hover:text-white transition-colors"
@@ -306,14 +315,6 @@ export default function App() {
                 >
                   <LayoutDashboard className="w-6 h-6" />
                 </button>
-                {userData?.isAdmin && (
-                  <button 
-                    onClick={() => setView('admin')}
-                    className={`p-2 rounded-xl transition-all ${view === 'admin' ? 'bg-primary text-white shadow-lg shadow-primary/20' : 'text-white/40 hover:text-white'}`}
-                  >
-                    <Settings className="w-6 h-6" />
-                  </button>
-                )}
                 <button 
                   onClick={logout}
                   className="p-2 text-white/20 hover:text-red-500 transition-colors"

@@ -65,6 +65,10 @@ export function AdminPanel() {
           <div className="flex items-center gap-3">
             <ShieldCheck className="w-8 h-8 text-primary" />
             <h1 className="text-4xl font-black font-display uppercase italic tracking-tighter">Admin Core</h1>
+            <div className="flex items-center gap-2 px-3 py-1 bg-white/5 rounded-full border border-white/5">
+              <span className="text-[10px] font-black text-primary uppercase">{users.length}</span>
+              <span className="text-[10px] font-black text-white/20 uppercase tracking-widest">Total Users</span>
+            </div>
           </div>
           <p className="text-white/40 font-medium text-xs uppercase tracking-widest">Global user and contract management</p>
         </div>
@@ -135,6 +139,7 @@ export function AdminPanel() {
                         className="w-full p-2 rounded-lg bg-background border border-white/10 text-xs font-bold uppercase"
                       >
                         <option value="none">None</option>
+                        <option value="trial">Trial</option>
                         <option value="single">Single</option>
                         <option value="aio">AIO</option>
                       </select>
@@ -147,6 +152,16 @@ export function AdminPanel() {
                         <option value="active">Active</option>
                         <option value="expired">Expired</option>
                       </select>
+                      <div className="flex items-center gap-2 pt-1">
+                        <input 
+                          type="checkbox"
+                          id={`isAdmin-${user.id}`}
+                          checked={editForm.isAdmin || false}
+                          onChange={(e) => setEditForm({...editForm, isAdmin: e.target.checked})}
+                          className="w-4 h-4 rounded border-white/10 bg-background accent-primary"
+                        />
+                        <label htmlFor={`isAdmin-${user.id}`} className="text-[10px] font-black uppercase text-white/40">Is Admin</label>
+                      </div>
                     </div>
                   ) : (
                     <div className="flex flex-col gap-1.5">
@@ -191,7 +206,11 @@ export function AdminPanel() {
                       <button 
                         onClick={() => {
                           setEditingUser(user.id);
-                          setEditForm({ plan: user.plan, accountStatus: user.accountStatus });
+                          setEditForm({ 
+                            plan: user.plan, 
+                            accountStatus: user.accountStatus,
+                            isAdmin: user.isAdmin || false
+                          });
                         }}
                         className="p-2 rounded-lg bg-white/5 text-white/40 opacity-0 group-hover:opacity-100 hover:bg-white/10 transition-all shadow-xl"
                       >

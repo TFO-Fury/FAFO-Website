@@ -77,8 +77,8 @@ export function Auth({ onClose }: AuthProps) {
     } catch (err: any) {
       console.error("Auth Error Detail:", err);
       let message = err.message;
-      if (message.includes('auth/configuration-not-found')) {
-        message = "Email/Password sign-in is not enabled in Firebase Console. Please try Google Login.";
+      if (message.includes('auth/configuration-not-found') || message.includes('auth/operation-not-allowed')) {
+        message = "Email/Password login is not enabled in your Firebase Console. Go to Auth > Sign-in method to enable it.";
       } else if (message.includes('auth/email-already-in-use')) {
         message = "This email is already registered.";
       } else if (message.includes('auth/invalid-credential')) {
