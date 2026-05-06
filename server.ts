@@ -53,17 +53,22 @@ async function startServer() {
   // Discord OAuth Configuration
   const DISCORD_CLIENT_ID = process.env.DISCORD_CLIENT_ID;
   const DISCORD_CLIENT_SECRET = process.env.DISCORD_CLIENT_SECRET;
-  let APP_URL = process.env.APP_URL || `http://localhost:${PORT}`;
   
-  // Normalize APP_URL: remove trailing slash if exists
-  if (APP_URL.endsWith('/')) {
-    APP_URL = APP_URL.slice(0, -1);
-  }
+  // Robust APP_URL detection
+  const getAppUrl = (req?: express.Request) => {
+    if (process.env.APP_URL) return process.env.APP_URL.replace(/\/$/, '');
+    if (req) {
+      const protocol = req.headers['x-forwarded-proto'] || req.protocol || 'http';
+      const host = req.headers['x-forwarded-host'] || req.get('host');
+      return `${protocol}://${host}`;
+    }
+    return `http://localhost:${PORT}`;
+  };
 
   // --- Diagnostic Middleware ---
   app.use((req, res, next) => {
     if (req.path.startsWith('/api')) {
-      console.log(`[API Request] ${req.method} ${req.path}`);
+      console.log(`[API Request] ${req.method} ${req.path} - Host: ${req.get('host')}`);
     }
     next();
   });
@@ -71,12 +76,19 @@ async function startServer() {
   // --- API Routes ---
 
   app.get("/api/health", (req, res) => {
-    res.json({ status: "healthy", timestamp: new Date().toISOString() });
+    res.json({ 
+      status: "healthy", 
+      timestamp: new Date().toISOString(),
+      env: process.env.NODE_ENV,
+      detectedUrl: getAppUrl(req)
+    });
   });
 
   app.get("/api/auth/discord/url", (req, res) => {
     const { userId, roleType } = req.query;
-    console.log(`[Discord] URL Request for user ${userId}`);
+    const currentAppUrl = getAppUrl(req);
+    
+    console.log(`[Discord] URL Request for user ${userId}. App URL: ${currentAppUrl}`);
     
     if (!DISCORD_CLIENT_ID || !DISCORD_CLIENT_SECRET) {
       return res.status(500).json({ error: "Discord credentials missing." });
@@ -84,9 +96,9 @@ async function startServer() {
 
     if (!userId) return res.status(400).json({ error: "userId required" });
 
-    const redirectUri = `${APP_URL}/auth/discord/callback`;
+    const redirectUri = `${currentAppUrl}/auth/discord/callback`;
 
-    console.log(`[Discord] Using redirectUri: ${redirectUri}`);
+    console.log(`[Discord] Generated redirectUri: ${redirectUri}`);
 
     const params = new URLSearchParams({
       client_id: DISCORD_CLIENT_ID,
@@ -296,13 +308,14 @@ async function startServer() {
       }
 
       const [userId, roleType] = stateStr.split(':');
-      console.log(`[Discord] Processing callback. User: ${userId}, Role: ${roleType}`);
+      const currentAppUrl = getAppUrl(req);
+      console.log(`[Discord] Processing callback. User: ${userId}, Role: ${roleType}, App URL: ${currentAppUrl}`);
 
       if (!DISCORD_CLIENT_ID || !DISCORD_CLIENT_SECRET) {
         throw new Error("Discord client configuration missing in environment. Contact Admin.");
       }
 
-      const redirectUri = `${APP_URL}/auth/discord/callback`;
+      const redirectUri = `${currentAppUrl}/auth/discord/callback`;
       
       console.log(`[Discord] Token Exchange. Redirect URI: ${redirectUri}`);
 
@@ -436,7 +449,8 @@ async function startServer() {
 
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running at http://localhost:${PORT}`);
-    console.log(`Callback URL: ${APP_URL}/auth/discord/callback`);
+    console.log(`Wait: Checking production URL...`);
+    console.log(`Callback URL template: ${getAppUrl()}/auth/discord/callback`);
   });
 }
 
