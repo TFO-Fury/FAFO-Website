@@ -100,10 +100,18 @@ export function CheckoutModal({ isOpen, onClose, user, userData, cart, total, is
       const res = await fetch(`/api/auth/discord/url?roleType=${roleTypes}&userId=${user.uid}`);
       
       if (!res.ok) {
-        const errorData = await res.json().catch(() => ({}));
-        let details = errorData.error || `Server returned ${res.status}`;
-        if (errorData.suggested) details += `\n\nSuggestion: ${errorData.suggested}`;
-        if (errorData.debug) details += `\n\nRoute: ${errorData.debug.method} ${errorData.debug.originalUrl}`;
+        let details = `Server returned ${res.status}`;
+        try {
+          const errorData = await res.json();
+          if (errorData.error) details = errorData.error;
+          if (errorData.suggested) details += `\n\nSuggestion: ${errorData.suggested}`;
+          if (errorData.debug) details += `\n\nRoute: ${errorData.debug.method} ${errorData.debug.originalUrl}`;
+        } catch (e) {
+          const text = await res.text().catch(() => "");
+          if (text.includes("<!DOCTYPE html>")) {
+            details += "\n\nThe server returned an HTML page instead of JSON. This usually means the API route is not properly registered or is being intercepted by a static file handler.";
+          }
+        }
         throw new Error(details);
       }
 

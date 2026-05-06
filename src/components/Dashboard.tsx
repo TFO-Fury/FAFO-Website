@@ -213,10 +213,19 @@ export function Dashboard({ onUpgrade, targetUserId }: DashboardProps) {
       const res = await fetch(`/api/auth/discord/url?roleType=${roleType}&userId=${currentUid}`);
       
       if (!res.ok) {
-        const errorData = await res.json().catch(() => ({}));
-        let details = errorData.error || `Server returned ${res.status}`;
-        if (errorData.suggested) details += `\n\nSuggestion: ${errorData.suggested}`;
-        if (errorData.debug) details += `\n\nRoute: ${errorData.debug.method} ${errorData.debug.originalUrl}`;
+        let details = `Server returned ${res.status}`;
+        try {
+          const errorData = await res.json();
+          if (errorData.error) details = errorData.error;
+          if (errorData.suggested) details += `\n\nSuggestion: ${errorData.suggested}`;
+          if (errorData.debug) details += `\n\nRoute: ${errorData.debug.method} ${errorData.debug.originalUrl}`;
+        } catch (e) {
+          // If not JSON, try to get text to see if it's an HTML error page
+          const text = await res.text().catch(() => "");
+          if (text.includes("<!DOCTYPE html>")) {
+            details += "\n\nThe server returned an HTML page instead of JSON. This usually means the API route is not properly registered or is being intercepted by a static file handler.";
+          }
+        }
         throw new Error(details);
       }
 

@@ -2,6 +2,7 @@ import express from "express";
 import cors from "cors";
 import { createServer as createViteServer } from "vite";
 import path from "path";
+import { readFileSync } from "fs";
 import dotenv from "dotenv";
 import * as admin from 'firebase-admin';
 import { initializeApp, getApps } from 'firebase-admin/app';
@@ -9,7 +10,10 @@ import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import { nanoid } from 'nanoid';
 import { Octokit } from 'octokit';
 
-import firebaseConfig from "./firebase-applet-config.json" with { type: "json" };
+// Load config using readFileSync for better reliability in production
+const firebaseConfig = JSON.parse(
+  readFileSync(new URL("./firebase-applet-config.json", import.meta.url), "utf-8")
+);
 
 dotenv.config();
 
@@ -77,36 +81,41 @@ async function startServer() {
     next();
   });
 
-  // --- API Routes ---
-  
-  // High-priority API interception to prevent static file interference
-  app.use("/api", (req, res, next) => {
-    // This ensures that even if a route doesn't match a specific handler, 
-    // it stays within the API domain and doesn't fall through to static serving
-    res.setHeader('X-API-Handled', 'true');
+  // --- API Router ---
+  const apiRouter = express.Router();
+  const SERVER_ID = nanoid();
+
+  // Prevent caching of API responses
+  apiRouter.use((req, res, next) => {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
     next();
   });
 
   // Simple test route to verify API availability
-  app.get("/api/test-connection", (req, res) => {
+  apiRouter.get("/test-connection", (req, res) => {
     res.json({ 
       ok: true, 
       message: "API is reachable", 
+      serverId: SERVER_ID,
       host: req.get('host'),
-      env: process.env.NODE_ENV 
+      env: process.env.NODE_ENV,
+      url: getAppUrl(req)
     });
   });
 
-  app.get("/api/health", (req, res) => {
+  apiRouter.get("/health", (req, res) => {
     res.json({ 
       status: "healthy", 
+      serverId: SERVER_ID,
       timestamp: new Date().toISOString(),
       env: process.env.NODE_ENV,
       detectedUrl: getAppUrl(req)
     });
   });
 
-  app.get("/api/auth/discord/url", (req, res) => {
+  apiRouter.get("/auth/discord/url", (req, res) => {
     try {
       const { userId, roleType } = req.query;
       const currentAppUrl = getAppUrl(req);
@@ -139,12 +148,12 @@ async function startServer() {
     }
   });
 
-  app.post("/api/payment/simulate", (req, res) => {
+  apiRouter.post("/payment/simulate", (req, res) => {
     console.log(`[API] Payment simulation: ${req.body?.userId}`);
     res.json({ success: true });
   });
 
-  app.post("/api/admin/user/sync-roles", async (req, res) => {
+  apiRouter.post("/admin/user/sync-roles", async (req, res) => {
     const { userId } = req.body;
     try {
       const firestore = await getDb();
@@ -157,7 +166,7 @@ async function startServer() {
     }
   });
 
-  app.post("/api/keys/activate", async (req, res) => {
+  apiRouter.post("/keys/activate", async (req, res) => {
     const { key, userId, plan = 'aio' } = req.body;
     if (!key || !userId) return res.status(400).json({ error: "Key and userId required" });
 
@@ -166,7 +175,6 @@ async function startServer() {
       const keyRef = firestore.collection('cd_keys').doc(key);
       const keySnap = await keyRef.get();
 
-      // Determine expiry based on plan
       const days = plan === 'trial' ? 3 : 30;
       const expirationDate = new Date();
       expirationDate.setDate(expirationDate.getDate() + days);
@@ -189,7 +197,6 @@ async function startServer() {
           updatedAt: FieldValue.serverTimestamp()
         });
       } else {
-        // Create new key entry for the user-provided game license
         batch.set(keyRef, {
           key,
           userId,
@@ -201,7 +208,6 @@ async function startServer() {
         });
       }
 
-      // Update user status and expiry
       const userRef = firestore.collection('users').doc(userId);
       batch.set(userRef, {
         plan,
@@ -211,16 +217,16 @@ async function startServer() {
       }, { merge: true });
 
       await batch.commit();
-
-      // Sync Discord in background
       syncDiscord(userId, plan).catch(console.error);
-
       res.json({ success: true, plan, expiresAt: expirationDate });
     } catch (err: any) {
       console.error("[Activation Error]", err);
       res.status(500).json({ error: "Activation failed: " + err.message });
     }
   });
+
+  // Mount API Router
+  app.use("/api", apiRouter);
 
   // Catch-all for any other /api/* routes to avoid HTML responses
   app.all("/api/*", (req, res) => {
@@ -237,6 +243,9 @@ async function startServer() {
       timestamp: new Date().toISOString()
     });
   });
+
+  // Top level ping
+  app.get("/ping", (req, res) => res.send("pong"));
 
   // --- Synchronization Helpers ---
   
