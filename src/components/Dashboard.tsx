@@ -214,7 +214,10 @@ export function Dashboard({ onUpgrade, targetUserId }: DashboardProps) {
       
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({}));
-        throw new Error(errorData.error || `Server returned ${res.status}`);
+        let details = errorData.error || `Server returned ${res.status}`;
+        if (errorData.suggested) details += `\n\nSuggestion: ${errorData.suggested}`;
+        if (errorData.debug) details += `\n\nRoute: ${errorData.debug.method} ${errorData.debug.originalUrl}`;
+        throw new Error(details);
       }
 
       const { url, redirectUri } = await res.json();

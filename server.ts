@@ -1,4 +1,5 @@
 import express from "express";
+import cors from "cors";
 import { createServer as createViteServer } from "vite";
 import path from "path";
 import dotenv from "dotenv";
@@ -36,6 +37,7 @@ async function startServer() {
   const app = express();
   const PORT = 3000;
 
+  app.use(cors());
   app.use(express.json());
 
   // Global logger for all requests
@@ -67,13 +69,22 @@ async function startServer() {
 
   // --- Diagnostic Middleware ---
   app.use((req, res, next) => {
-    if (req.path.startsWith('/api')) {
-      console.log(`[API Request] ${req.method} ${req.path} - Host: ${req.get('host')}`);
-    }
+    // Log every single request to help identify routing issues on custom domains
+    console.log(`[Diagnostic] ${req.method} ${req.originalUrl} - Host: ${req.get('host')} - Origin: ${req.get('origin')}`);
     next();
   });
 
   // --- API Routes ---
+
+  // Simple test route to verify API availability
+  app.get("/api/test-connection", (req, res) => {
+    res.json({ 
+      ok: true, 
+      message: "API is reachable", 
+      host: req.get('host'),
+      env: process.env.NODE_ENV 
+    });
+  });
 
   app.get("/api/health", (req, res) => {
     res.json({ 
@@ -199,9 +210,16 @@ async function startServer() {
 
   // Catch-all for any other /api/* routes to avoid HTML responses
   app.all("/api/*", (req, res) => {
-    console.warn(`[API] 404 - Not Found: ${req.method} ${req.path}`);
+    console.warn(`[API 404] No match for: ${req.method} ${req.originalUrl}`);
     res.status(404).json({ 
       error: `Resource not found: ${req.method} ${req.path}`,
+      suggested: "Check if the path is correct and your server is running the latest version.",
+      debug: {
+        method: req.method,
+        path: req.path,
+        originalUrl: req.originalUrl,
+        host: req.get('host')
+      },
       timestamp: new Date().toISOString()
     });
   });
