@@ -40,9 +40,12 @@ async function startServer() {
   app.use(cors());
   app.use(express.json());
 
-  // Global logger for all requests
+  // Global logger for all requests - Extremely Verbose for Custom Domain Debugging
   app.use((req, res, next) => {
-    console.log(`[Req] ${req.method} ${req.url}`);
+    const isApi = req.path.startsWith('/api');
+    if (isApi || process.env.NODE_ENV !== 'production') {
+      console.log(`[Req] ${req.method} ${req.originalUrl} | Host: ${req.get('host')} | Protocol: ${req.protocol}`);
+    }
     next();
   });
 
@@ -75,6 +78,14 @@ async function startServer() {
   });
 
   // --- API Routes ---
+  
+  // High-priority API interception to prevent static file interference
+  app.use("/api", (req, res, next) => {
+    // This ensures that even if a route doesn't match a specific handler, 
+    // it stays within the API domain and doesn't fall through to static serving
+    res.setHeader('X-API-Handled', 'true');
+    next();
+  });
 
   // Simple test route to verify API availability
   app.get("/api/test-connection", (req, res) => {
@@ -96,33 +107,36 @@ async function startServer() {
   });
 
   app.get("/api/auth/discord/url", (req, res) => {
-    const { userId, roleType } = req.query;
-    const currentAppUrl = getAppUrl(req);
-    
-    console.log(`[Discord] URL Request for user ${userId}. App URL: ${currentAppUrl}`);
-    
-    if (!DISCORD_CLIENT_ID || !DISCORD_CLIENT_SECRET) {
-      return res.status(500).json({ error: "Discord credentials missing." });
+    try {
+      const { userId, roleType } = req.query;
+      const currentAppUrl = getAppUrl(req);
+      
+      console.log(`[Discord] URL Request. User: ${userId} | Role: ${roleType} | App: ${currentAppUrl}`);
+      
+      if (!DISCORD_CLIENT_ID || !DISCORD_CLIENT_SECRET) {
+        return res.status(500).json({ error: "Discord credentials missing on server." });
+      }
+
+      if (!userId) return res.status(400).json({ error: "userId required" });
+
+      const redirectUri = `${currentAppUrl}/auth/discord/callback`;
+
+      const params = new URLSearchParams({
+        client_id: DISCORD_CLIENT_ID,
+        redirect_uri: redirectUri,
+        response_type: "code",
+        scope: "identify guilds.join",
+        state: `${userId}:${roleType || 'one-class'}`
+      });
+
+      const url = `https://discord.com/api/oauth2/authorize?${params.toString()}`;
+      console.log(`[Discord] Success - Generated URL: ${url.substring(0, 50)}...`);
+      
+      res.json({ url, redirectUri }); 
+    } catch (err: any) {
+      console.error("[Discord] Critical Error generating URL:", err);
+      res.status(500).json({ error: "Internal server error generating Discord URL: " + err.message });
     }
-
-    if (!userId) return res.status(400).json({ error: "userId required" });
-
-    const redirectUri = `${currentAppUrl}/auth/discord/callback`;
-
-    console.log(`[Discord] Generated redirectUri: ${redirectUri}`);
-
-    const params = new URLSearchParams({
-      client_id: DISCORD_CLIENT_ID,
-      redirect_uri: redirectUri,
-      response_type: "code",
-      scope: "identify guilds.join",
-      state: `${userId}:${roleType || 'one-class'}`
-    });
-
-    res.json({ 
-      url: `https://discord.com/api/oauth2/authorize?${params.toString()}`,
-      redirectUri 
-    }); 
   });
 
   app.post("/api/payment/simulate", (req, res) => {
