@@ -84,10 +84,7 @@ async function startServer() {
 
     if (!userId) return res.status(400).json({ error: "userId required" });
 
-    // Robust host/protocol detection
-    const protocol = req.headers['x-forwarded-proto'] || req.protocol;
-    const host = req.headers['x-forwarded-host'] || req.get('host');
-    const redirectUri = `${protocol}://${host}/auth/discord/callback`;
+    const redirectUri = `${APP_URL}/auth/discord/callback`;
 
     console.log(`[Discord] Using redirectUri: ${redirectUri}`);
 
@@ -305,12 +302,9 @@ async function startServer() {
         throw new Error("Discord client configuration missing in environment. Contact Admin.");
       }
 
-      // Exact same detection logic as the URL generator
-      const protocol = req.headers['x-forwarded-proto'] || req.protocol;
-      const host = req.get('host');
-      const redirectUri = `${protocol}://${host}/auth/discord/callback`;
+      const redirectUri = `${APP_URL}/auth/discord/callback`;
       
-      console.log(`[Discord] Token Exchange. Host: ${host}, Redirect URI: ${redirectUri}`);
+      console.log(`[Discord] Token Exchange. Redirect URI: ${redirectUri}`);
 
       const tokenResponse = await fetch('https://discord.com/api/oauth2/token', {
         method: 'POST',
@@ -355,7 +349,7 @@ async function startServer() {
           const firestore = await getDb();
           await firestore.collection('users').doc(userId).set({
             discordId: discordUserId,
-            updatedAt: admin.firestore.FieldValue.serverTimestamp()
+            updatedAt: FieldValue.serverTimestamp()
           }, { merge: true });
           console.log(`[Discord] Saved link to Firestore for ${userId}`);
         } catch (err) {
