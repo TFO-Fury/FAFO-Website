@@ -4,6 +4,7 @@ import { getFirestore, doc, getDocFromServer } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json' with { type: 'json' };
 
 const app = initializeApp(firebaseConfig);
+console.log(`[Firebase] Initializing Web SDK for Project: ${firebaseConfig.projectId}, Database: ${firebaseConfig.firestoreDatabaseId}`);
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 export const auth = getAuth(app);
 
@@ -48,9 +49,13 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
 async function testConnection() {
   try {
     await getDocFromServer(doc(db, 'test', 'connection'));
-  } catch (error) {
-    if (error instanceof Error && error.message.includes('the client is offline')) {
-      console.error("Please check your Firebase configuration.");
+    console.log("[Firebase] Client connection verified.");
+  } catch (error: any) {
+    console.error("[Firebase] Connection test failed:", error.message, error.code);
+    if (error.message.includes('the client is offline')) {
+      console.error("Please check your Firebase configuration (Client is offline).");
+    } else if (error.code === 'permission-denied') {
+      console.error("Please check your Firebase security rules.");
     }
   }
 }

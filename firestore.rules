@@ -103,5 +103,10 @@ service cloud.firestore {
       allow list: if isSignedIn() && (isAdmin() || resource.data.userId == request.auth.uid);
       allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
     }
+
+    // Connectivity Check Collection
+    match /test/{docId} {
+      allow read: if true;
+    }
   }
 }

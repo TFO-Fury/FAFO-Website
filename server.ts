@@ -5,8 +5,9 @@ import path from "path";
 import { readFileSync } from "fs";
 import dotenv from "dotenv";
 import * as admin from 'firebase-admin';
-import { initializeApp, getApps } from 'firebase-admin/app';
-import { getFirestore, FieldValue } from 'firebase-admin/firestore';
+import { initializeApp, getApps, getApp } from 'firebase-admin/app';
+import { getFirestore, FieldValue, Timestamp } from 'firebase-admin/firestore';
+import type { Firestore } from 'firebase-admin/firestore';
 import { nanoid } from 'nanoid';
 import { Octokit } from 'octokit';
 
@@ -17,21 +18,58 @@ const firebaseConfig = JSON.parse(
 
 dotenv.config();
 
-let db: admin.firestore.Firestore | null = null;
+let db: Firestore | null = null;
 
 async function getDb() {
   if (!db) {
     try {
-      if (getApps().length === 0) {
+      const apps = getApps();
+      if (apps.length === 0) {
+        // AI Studio Project ID is explicitly provided in the config.
+        const targetProjectId = firebaseConfig.projectId;
+        console.log(`[Firebase] Initializing Admin SDK with Project ID: ${targetProjectId}`);
+        
+        const adminAny = admin as any;
+        const credentialSource = adminAny.credential || adminAny.default?.credential;
+        
+        if (!credentialSource) {
+          throw new Error("Critical: firebase-admin credential object is missing.");
+        }
+
         initializeApp({
-          projectId: firebaseConfig.projectId,
+          credential: credentialSource.applicationDefault(),
+          projectId: targetProjectId,
         });
       }
-      // Use the specific databaseId from config
-      db = getFirestore(firebaseConfig.firestoreDatabaseId);
+      
+      const firebaseApp = getApp();
+      const databaseId = firebaseConfig.firestoreDatabaseId;
+      
+      // Select the correct database instance.
+      if (databaseId && databaseId !== '(default)' && databaseId !== projectId) {
+        console.log(`[Firebase] Connecting to Named Database Instance: "${databaseId}" in Project: "${projectId}"`);
+        db = getFirestore(firebaseApp, databaseId);
+      } else {
+        console.log(`[Firebase] Connecting to Default Database Instance in Project: "${projectId}"`);
+        db = getFirestore(firebaseApp);
+      }
+
+      // Verify connection immediately
+      try {
+        console.log(`[Firebase] Running ping check on collection "_health"...`);
+        const pingSnap = await db.collection('_health').doc('ping').get();
+        console.log(`[Firebase] Connection check successful. Snapshot exists: ${pingSnap.exists}`);
+      } catch (err: any) {
+        console.error(`[Firebase] Initial connection check failed: ${err.message} (Code: ${err.code})`);
+        if (err.message.includes('NOT_FOUND')) {
+          console.error("[Firebase] TIP: If the database is not found, check if the databaseId in config matches the instance name in Firebase console.");
+        }
+      }
+
     } catch (err) {
-      console.error("Firebase Admin Init Error:", err);
-      throw new Error("Backend storage unavailable");
+      console.error("[Firebase] Admin Initialization Failure:", err);
+      const msg = err instanceof Error ? err.message : String(err);
+      throw new Error(`Cloud Storage Unavailable: ${msg}`);
     }
   }
   return db;
@@ -98,10 +136,7 @@ async function startServer() {
     res.json({ 
       ok: true, 
       message: "API is reachable", 
-      serverId: SERVER_ID,
-      host: req.get('host'),
-      env: process.env.NODE_ENV,
-      url: getAppUrl(req)
+      serverId: SERVER_ID
     });
   });
 
@@ -113,6 +148,29 @@ async function startServer() {
       env: process.env.NODE_ENV,
       detectedUrl: getAppUrl(req)
     });
+  });
+
+  apiRouter.get("/firebase-health", async (req, res) => {
+    try {
+      const firestore = await getDb();
+      // Try a simple list operation to verify permissions
+      const collections = await firestore.listCollections();
+      res.json({ 
+        ok: true, 
+        collections: collections.map(c => c.id),
+        projectId: firebaseConfig.projectId,
+        databaseId: firebaseConfig.firestoreDatabaseId
+      });
+    } catch (err: any) {
+      console.error("[Firebase Health Check Failed]", err);
+      res.status(500).json({ 
+        ok: false, 
+        error: err.message,
+        code: err.code,
+        projectId: firebaseConfig.projectId,
+        databaseId: firebaseConfig.firestoreDatabaseId
+      });
+    }
   });
 
   apiRouter.get("/auth/discord/url", (req, res) => {
@@ -168,7 +226,12 @@ async function startServer() {
 
   apiRouter.post("/keys/activate", async (req, res) => {
     const { key, userId, plan = 'aio' } = req.body;
-    if (!key || !userId) return res.status(400).json({ error: "Key and userId required" });
+    console.log(`[API] Activate Key Request: ${key} for user ${userId} (Plan: ${plan})`);
+    
+    if (!key || !userId) {
+      console.warn("[API] Missing key or userId in activation request");
+      return res.status(400).json({ error: "Key and userId required" });
+    }
 
     try {
       const firestore = await getDb();
@@ -179,14 +242,20 @@ async function startServer() {
       const expirationDate = new Date();
       expirationDate.setDate(expirationDate.getDate() + days);
 
+      console.log(`[API] Processing key ${key}. Exists: ${keySnap.exists}. Expiration: ${expirationDate.toISOString()}`);
+
       const batch = firestore.batch();
 
       if (keySnap.exists) {
         const keyData = keySnap.data();
+        console.log(`[API] Existing key data:`, keyData);
+        
         if (keyData?.userId && keyData.userId !== userId) {
+          console.warn(`[API] Key ${key} owned by ${keyData.userId}, but user ${userId} tried to activate it`);
           return res.status(400).json({ error: "Key already used by another user" });
         }
         if (keyData?.status === 'inactive') {
+          console.warn(`[API] Deactivated key ${key} attempted by user ${userId}`);
           return res.status(400).json({ error: "This key has been deactivated by an admin" });
         }
         
@@ -197,6 +266,7 @@ async function startServer() {
           updatedAt: FieldValue.serverTimestamp()
         });
       } else {
+        console.log(`[API] Creating new key record for ${key}`);
         batch.set(keyRef, {
           key,
           userId,
@@ -204,7 +274,8 @@ async function startServer() {
           status: 'active',
           createdAt: FieldValue.serverTimestamp(),
           lastUsedAt: FieldValue.serverTimestamp(),
-          updatedAt: FieldValue.serverTimestamp()
+          updatedAt: FieldValue.serverTimestamp(),
+          expiresAt: Timestamp.fromDate(expirationDate)
         });
       }
 
@@ -212,16 +283,34 @@ async function startServer() {
       batch.set(userRef, {
         plan,
         accountStatus: 'active',
-        expiresAt: expirationDate,
+        isAio: plan === 'aio',
+        expiresAt: Timestamp.fromDate(expirationDate),
         updatedAt: FieldValue.serverTimestamp()
       }, { merge: true });
 
       await batch.commit();
-      syncDiscord(userId, plan).catch(console.error);
+      console.log(`[API] Successfully committed activation for user ${userId}`);
+      
+      syncDiscord(userId, plan).catch(err => console.error("[Discord Sync Error]", err));
       res.json({ success: true, plan, expiresAt: expirationDate });
     } catch (err: any) {
       console.error("[Activation Error]", err);
-      res.status(500).json({ error: "Activation failed: " + err.message });
+      res.status(500).json({ error: "Server error during activation: " + err.message });
+    }
+  });
+
+  apiRouter.post("/keys/deactivate", async (req, res) => {
+    const { keyId } = req.body;
+    try {
+      const firestore = await getDb();
+      await firestore.collection('cd_keys').doc(keyId).update({
+        status: 'inactive',
+        updatedAt: FieldValue.serverTimestamp()
+      });
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error("[Deactivation Error]", err);
+      res.status(500).json({ error: "Server error during deactivation: " + err.message });
     }
   });
 
