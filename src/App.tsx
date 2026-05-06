@@ -72,6 +72,12 @@ export default function App() {
 
   // Auth & Profile Listener
   useEffect(() => {
+    // Backend health check
+    fetch('/api/health')
+      .then(r => r.json())
+      .then(data => console.log("[System] Backend Health:", data))
+      .catch(err => console.error("[System] Backend unreachable:", err));
+
     const unsubAuth = onAuthStateChanged(auth, (authUser) => {
       setUser(authUser);
       if (authUser) {

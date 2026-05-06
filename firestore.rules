@@ -16,13 +16,10 @@ service cloud.firestore {
     }
 
     function isAdmin() {
-      let reqAuth = request.auth;
-      let email = reqAuth.token.get('email', '').lower();
-      let isOwnerEmail = isSignedIn() && (email == 'nick9284@gmail.com');
-      return isOwnerEmail || (
-        isSignedIn() && 
-        exists(/databases/$(database)/documents/users/$(reqAuth.uid)) && 
-        get(/databases/$(database)/documents/users/$(reqAuth.uid)).data.get('role', 'user') == 'admin'
+      return isSignedIn() && (
+        request.auth.token.email.lower() == 'nick9284@gmail.com' ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin')
       );
     }
 
@@ -80,10 +77,25 @@ service cloud.firestore {
     }
 
     match /cd_keys/{keyId} {
-      allow get: if isAdmin() || (isSignedIn() && exists(/databases/$(database)/documents/cd_keys/$(keyId)) && get(/databases/$(database)/documents/cd_keys/$(keyId)).data.userId == request.auth.uid);
-      allow list: if isAdmin();
-      // Writing to CD Keys is strictly Admin or Backend (via Admin SDK)
-      allow create, update, delete: if isAdmin();
+      allow get: if isSignedIn() && (isAdmin() || resource.data.userId == request.auth.uid);
+      allow list: if isSignedIn() && (isAdmin() || resource.data.userId == request.auth.uid);
+      
+      allow create: if isSignedIn() && (
+        isAdmin() || (
+          request.resource.data.userId == request.auth.uid &&
+          request.resource.data.status == 'active'
+        )
+      );
+      
+      allow update: if isSignedIn() && (
+        isAdmin() || (
+          resource.data.userId == request.auth.uid && 
+          request.resource.data.userId == request.auth.uid &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt'])
+        )
+      );
+
+      allow delete: if isSignedIn() && (isAdmin() || resource.data.userId == request.auth.uid);
     }
 
     match /purchases/{purchaseId} {

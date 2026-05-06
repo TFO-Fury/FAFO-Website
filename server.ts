@@ -38,7 +38,13 @@ async function startServer() {
 
   app.use(express.json());
 
-  console.log("[Server] Starting with environment:");
+  // Global logger for all requests
+  app.use((req, res, next) => {
+    console.log(`[Req] ${req.method} ${req.url}`);
+    next();
+  });
+
+  console.log(`[Server] Booting at ${new Date().toISOString()}`);
   console.log(` - NODE_ENV: ${process.env.NODE_ENV}`);
   console.log(` - DISCORD_CLIENT_ID: ${process.env.DISCORD_CLIENT_ID ? 'SET' : 'MISSING'}`);
   console.log(` - DISCORD_BOT_TOKEN: ${process.env.DISCORD_BOT_TOKEN ? 'SET' : 'MISSING'}`);
@@ -54,40 +60,37 @@ async function startServer() {
     APP_URL = APP_URL.slice(0, -1);
   }
 
-  // --- Diagnostic & Health ---
+  // --- Diagnostic Middleware ---
+  app.use((req, res, next) => {
+    if (req.path.startsWith('/api')) {
+      console.log(`[API Request] ${req.method} ${req.path}`);
+    }
+    next();
+  });
+
+  // --- API Routes ---
+
   app.get("/api/health", (req, res) => {
     res.json({ status: "healthy", timestamp: new Date().toISOString() });
   });
 
-  // API: Get Discord Auth URL (Moved up for priority and logging)
   app.get("/api/auth/discord/url", (req, res) => {
-    console.log("[Discord] URL Request received");
+    const { userId, roleType } = req.query;
+    console.log(`[Discord] URL Request for user ${userId}`);
     
     if (!DISCORD_CLIENT_ID || !DISCORD_CLIENT_SECRET) {
-      const error = "Discord OAuth credentials (ID/SECRET) are not configured in the server environment secrets.";
-      console.error("[Discord] Logic Error:", error);
-      return res.status(500).json({ error });
+      return res.status(500).json({ error: "Discord credentials missing." });
     }
 
-    const { roleType, userId } = req.query;
-    if (!userId) {
-      console.error("[Discord] Request Error: userId missing from query");
-      return res.status(400).json({ error: "userId is required" });
-    }
+    if (!userId) return res.status(400).json({ error: "userId required" });
 
-    // Dynamic APP_URL detection
+    // Robust host/protocol detection
     const protocol = req.headers['x-forwarded-proto'] || req.protocol;
-    const host = req.get('host');
-    
-    // Safety: ensure we don't have double protocols
-    const cleanHost = host?.replace(/^https?:\/\//, '');
-    
-    // Prefer the current host unless APP_URL is explicitly set to a non-localhost production URL
-    const detectedAppUrl = (process.env.APP_URL && !process.env.APP_URL.includes('localhost') && !process.env.APP_URL.includes('.run.app')) 
-      ? APP_URL 
-      : `${protocol}://${cleanHost}`;
+    const host = req.headers['x-forwarded-host'] || req.get('host');
+    const redirectUri = `${protocol}://${host}/auth/discord/callback`;
 
-    const redirectUri = `${detectedAppUrl}/auth/discord/callback`;
+    console.log(`[Discord] Using redirectUri: ${redirectUri}`);
+
     const params = new URLSearchParams({
       client_id: DISCORD_CLIENT_ID,
       redirect_uri: redirectUri,
@@ -96,13 +99,102 @@ async function startServer() {
       state: `${userId}:${roleType || 'one-class'}`
     });
 
-    const url = `https://discord.com/api/oauth2/authorize?${params.toString()}`;
-    console.log(`[Discord] GENERATED AUTH URL`);
-    console.log(` - Host: ${host}`);
-    console.log(` - Redirect URI: ${redirectUri} (CRITICAL: THIS MUST BE IN DISCORD DASHBOARD)`);
-    console.log(` - State: ${userId}:${roleType}`);
-    
-    res.json({ url, redirectUri }); // Return redirectUri so UI can show it if error
+    res.json({ 
+      url: `https://discord.com/api/oauth2/authorize?${params.toString()}`,
+      redirectUri 
+    }); 
+  });
+
+  app.post("/api/payment/simulate", (req, res) => {
+    console.log(`[API] Payment simulation: ${req.body?.userId}`);
+    res.json({ success: true });
+  });
+
+  app.post("/api/admin/user/sync-roles", async (req, res) => {
+    const { userId } = req.body;
+    try {
+      const firestore = await getDb();
+      const userDoc = await firestore.collection('users').doc(userId).get();
+      if (!userDoc.exists) return res.status(404).json({ error: "User not found" });
+      await syncDiscord(userId, userDoc.data()?.plan || 'none');
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ error: "Sync failed" });
+    }
+  });
+
+  app.post("/api/keys/activate", async (req, res) => {
+    const { key, userId, plan = 'aio' } = req.body;
+    if (!key || !userId) return res.status(400).json({ error: "Key and userId required" });
+
+    try {
+      const firestore = await getDb();
+      const keyRef = firestore.collection('cd_keys').doc(key);
+      const keySnap = await keyRef.get();
+
+      // Determine expiry based on plan
+      const days = plan === 'trial' ? 3 : 30;
+      const expirationDate = new Date();
+      expirationDate.setDate(expirationDate.getDate() + days);
+
+      const batch = firestore.batch();
+
+      if (keySnap.exists) {
+        const keyData = keySnap.data();
+        if (keyData?.userId && keyData.userId !== userId) {
+          return res.status(400).json({ error: "Key already used by another user" });
+        }
+        if (keyData?.status === 'inactive') {
+          return res.status(400).json({ error: "This key has been deactivated by an admin" });
+        }
+        
+        batch.update(keyRef, {
+          userId,
+          status: 'active',
+          lastUsedAt: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp()
+        });
+      } else {
+        // Create new key entry for the user-provided game license
+        batch.set(keyRef, {
+          key,
+          userId,
+          plan,
+          status: 'active',
+          createdAt: FieldValue.serverTimestamp(),
+          lastUsedAt: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp()
+        });
+      }
+
+      // Update user status and expiry
+      const userRef = firestore.collection('users').doc(userId);
+      batch.set(userRef, {
+        plan,
+        accountStatus: 'active',
+        expiresAt: expirationDate,
+        updatedAt: FieldValue.serverTimestamp()
+      }, { merge: true });
+
+      await batch.commit();
+
+      // Sync Discord in background
+      syncDiscord(userId, plan).catch(console.error);
+
+      res.json({ success: true, plan, expiresAt: expirationDate });
+    } catch (err: any) {
+      console.error("[Activation Error]", err);
+      res.status(500).json({ error: "Activation failed: " + err.message });
+    }
+  });
+
+  // Catch-all for any other /api/* routes to avoid HTML responses
+  app.all("/api/*", (req, res) => {
+    console.warn(`[API] 404 - Not Found: ${req.method} ${req.path}`);
+    res.status(404).json({ 
+      error: `Resource not found: ${req.method} ${req.path}`,
+      timestamp: new Date().toISOString()
+    });
   });
 
   // --- Synchronization Helpers ---
@@ -186,45 +278,6 @@ async function startServer() {
     }
   }
 
-  // --- Administrative Support ---
-
-  // Admin: Sync user roles
-  app.post("/api/admin/user/sync-roles", async (req, res) => {
-    const { userId } = req.body;
-    if (!userId) return res.status(400).json({ error: "userId is required" });
-    
-    try {
-      const firestore = await getDb();
-      const userDoc = await firestore.collection('users').doc(userId).get();
-      if (!userDoc.exists) return res.status(404).json({ error: "User not found" });
-      
-      const userData = userDoc.data();
-      const plan = userData?.plan || 'none';
-      
-      await syncDiscord(userId, plan);
-      res.json({ success: true });
-    } catch (err) {
-      console.error("Sync Roles Error:", err);
-      res.status(500).json({ error: "Failed to sync roles" });
-    }
-  });
-
-  // API: Simulate Payment
-  app.post("/api/payment/simulate", async (req, res) => {
-    const { userId, plan, amount } = req.body;
-    
-    if (!userId || !plan) {
-      return res.status(400).json({ error: "Missing required fields" });
-    }
-
-    try {
-      res.json({ success: true });
-    } catch (error) {
-      console.error("Payment Sync Error (Server):", error);
-      res.json({ success: true });
-    }
-  });
-
   // API: OAuth Internal Callback Handler
   app.get(["/auth/discord/callback", "/auth/discord/callback/"], async (req, res) => {
     const { code, state, error, error_description } = req.query;
@@ -255,11 +308,8 @@ async function startServer() {
       // Exact same detection logic as the URL generator
       const protocol = req.headers['x-forwarded-proto'] || req.protocol;
       const host = req.get('host');
-      const detectedAppUrl = (process.env.APP_URL && !process.env.APP_URL.includes('localhost') && !process.env.APP_URL.includes('.run.app')) 
-        ? APP_URL 
-        : `${protocol}://${host}`;
-
-      const redirectUri = `${detectedAppUrl}/auth/discord/callback`;
+      const redirectUri = `${protocol}://${host}/auth/discord/callback`;
+      
       console.log(`[Discord] Token Exchange. Host: ${host}, Redirect URI: ${redirectUri}`);
 
       const tokenResponse = await fetch('https://discord.com/api/oauth2/token', {
@@ -345,19 +395,21 @@ async function startServer() {
         }
       }
 
-      // Send success message to parent window and close popup
+      // --- Success Response ---
       res.send(`
         <html>
-          <body style="background: #10131a; color: white; font-family: sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0;">
-            <div style="text-align: center; border: 1px solid rgba(255,255,255,0.1); padding: 40px; border-radius: 24px; background: #1d2026; max-width: 400px;">
-              <h1 style="color: #ec5b13; margin-bottom: 10px;">Account Linked!</h1>
-              <p style="opacity: 0.6; line-height: 1.5;">Your Discord account is connected and roles have been updated.</p>
+          <head><title>Success</title></head>
+          <body style="background: #10131a; color: white; font-family: sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; overflow: hidden;">
+            <div style="text-align: center; border: 1px solid rgba(255,255,255,0.1); padding: 40px; border-radius: 32px; background: #1a1d23; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5);">
+              <div style="width: 64px; height: 64px; background: #ec5b13; border-radius: 20px; display: flex; align-items: center; justify-content: center; margin: 0 auto 24px; box-shadow: 0 0 20px rgba(236, 91, 19, 0.3);">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+              </div>
+              <h1 style="color: #ffffff; font-size: 24px; font-weight: 900; margin-bottom: 8px; letter-spacing: -0.02em;">Account Linked</h1>
+              <p style="opacity: 0.5; font-size: 14px; line-height: 1.5; margin-bottom: 24px;">Your Discord account has been connected and roles have been updated.</p>
+              <p style="font-size: 11px; font-weight: 900; color: #ec5b13; text-transform: uppercase; letter-spacing: 0.1em; opacity: 0.8;">Window closing automatically...</p>
               <script>
                 if (window.opener) {
-                  window.opener.postMessage({ 
-                    type: 'DISCORD_AUTH_SUCCESS', 
-                    discordId: '${discordUserId}' 
-                  }, '*');
+                  window.opener.postMessage({ type: 'DISCORD_AUTH_SUCCESS', discordId: '${discordUserId}' }, '*');
                   setTimeout(() => window.close(), 3000);
                 } else {
                   window.location.href = '/';

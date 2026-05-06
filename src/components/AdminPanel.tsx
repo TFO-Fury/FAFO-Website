@@ -26,6 +26,7 @@ interface AdminPanelProps {
 
 export function AdminPanel({ onViewUser }: AdminPanelProps) {
   const [users, setUsers] = useState<any[]>([]);
+  const [allKeys, setAllKeys] = useState<any[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterPlan, setFilterPlan] = useState('all');
   const [filterStatus, setFilterStatus] = useState('all');
@@ -52,6 +53,13 @@ export function AdminPanel({ onViewUser }: AdminPanelProps) {
     return () => unsubUsers();
   }, []);
 
+  useEffect(() => {
+    const unsubKeys = onSnapshot(collection(db, 'cd_keys'), (snapshot) => {
+      setAllKeys(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
+    return () => unsubKeys();
+  }, []);
+
   const handleUpdateUser = async (userId: string) => {
     try {
       const userRef = doc(db, 'users', userId);
@@ -67,8 +75,10 @@ export function AdminPanel({ onViewUser }: AdminPanelProps) {
   };
 
   const filteredUsers = users.filter(user => {
+    const userKeys = allKeys.filter(k => k.userId === user.id).map(k => k.key.toLowerCase());
     const matchesSearch = user.email?.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                         user.discordId?.toLowerCase().includes(searchTerm.toLowerCase());
+                         user.discordId?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         userKeys.some(k => k.includes(searchTerm.toLowerCase()));
     const matchesPlan = filterPlan === 'all' || user.plan === filterPlan;
     const matchesStatus = filterStatus === 'all' || user.accountStatus === filterStatus;
     return matchesSearch && matchesPlan && matchesStatus;
@@ -120,7 +130,7 @@ export function AdminPanel({ onViewUser }: AdminPanelProps) {
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-white/20" />
             <input 
               type="text"
-              placeholder="Search Email/Discord..."
+              placeholder="Search Email/Discord/Key..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="h-12 pl-12 pr-6 rounded-xl bg-surface-dark border border-white/5 text-sm font-medium focus:ring-2 focus:ring-primary/20 outline-none transition-all w-full md:w-64"
@@ -228,6 +238,18 @@ export function AdminPanel({ onViewUser }: AdminPanelProps) {
                       <span className="text-[10px] font-black text-white/20 uppercase tracking-widest">Discord</span>
                       <span className={user.discordId ? "text-[11px] text-primary font-bold" : "text-[11px] text-white/20 italic"}>{user.discordId || 'Not Linked'}</span>
                     </div>
+                    {allKeys.filter(k => k.userId === user.id).map(key => (
+                      <div key={key.id} className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] font-black text-white/20 uppercase tracking-widest">Key</span>
+                          <span className="text-[11px] text-orange-500 font-mono font-bold truncate max-w-[150px]" title={key.key}>{key.key}</span>
+                        </div>
+                        <div className="flex items-center gap-2 pl-2 border-l border-white/5">
+                          <span className="text-[9px] font-black text-white/10 uppercase tracking-widest">Tier</span>
+                          <span className="text-[9px] text-white/40 font-bold uppercase">{key.plan || 'AIO'}</span>
+                        </div>
+                      </div>
+                    ))}
                     {user.entitlements?.length > 0 && (
                       <div className="flex items-center gap-2">
                         <span className="text-[10px] font-black text-white/20 uppercase tracking-widest">Entitled</span>

@@ -35,9 +35,11 @@ export function CheckoutModal({ isOpen, onClose, user, userData, cart, total, is
       const plan = hasTrial ? 'trial' : (cart.some(i => i.type === 'aio') ? 'aio' : 'single');
       
       const expirationDate = new Date();
-      expirationDate.setDate(expirationDate.getDate() + (hasTrial ? 3 : 30));
+      // Trial: 3 days, Others: 30 days
+      const daysToAdd = plan === 'trial' ? 3 : 30;
+      expirationDate.setDate(expirationDate.getDate() + daysToAdd);
       
-      console.log(`[CheckoutModal] User: ${user.uid}, Plan: ${plan}, Expires: ${expirationDate}`);
+      console.log(`[CheckoutModal] User: ${user.uid}, Plan: ${plan}, Days: ${daysToAdd}, Expires: ${expirationDate}`);
 
       // 1. Update Profile
       console.log("[CheckoutModal] Updating Firestore profile...");
@@ -102,7 +104,9 @@ export function CheckoutModal({ isOpen, onClose, user, userData, cart, total, is
         throw new Error(errorData.error || `Server returned ${res.status}`);
       }
 
-      const { url } = await res.json();
+      const { url, redirectUri } = await res.json();
+      console.log("[Discord] Generated Redirect URI:", redirectUri);
+      console.log("[Discord] Make sure this EXACT URL is in your Discord Developer Portal -> OAuth2 -> Redirects");
       
       const width = 500;
       const height = 750;
@@ -111,8 +115,15 @@ export function CheckoutModal({ isOpen, onClose, user, userData, cart, total, is
       
       window.open(url, 'discord_auth', `width=${width},height=${height},left=${left},top=${top}`);
     } catch (err: any) {
-      console.error("Discord link error:", err);
-      alert(`Discord Link Error: ${err.message || "Failed to connect to Discord"}`);
+      console.error("[Discord Checkout Error]", err);
+      const is404 = err.message.includes('404');
+      const errorMsg = err.message || "Unknown error";
+      
+      const tip = is404 
+        ? "\n\nServer 404: The API route is missing or the server restarted. Try again in 5 seconds."
+        : `\n\nDebug Info:\nOrigin: ${window.location.origin}\nUser: ${user?.uid}\n\nEnsure this EXACT URL is in your Discord Portal:\n${window.location.origin}/auth/discord/callback`;
+          
+      alert(`Discord Error: ${errorMsg}${tip}`);
     } finally {
       setIsDiscordLoading(false);
     }

@@ -16,8 +16,11 @@ import {
   Calendar,
   AlertCircle,
   Trash2,
-  Lock
+  Lock,
+  Plus,
+  ShieldCheck as ShieldCheckIcon
 } from 'lucide-react';
+import { CDKeyManager } from './CDKeyManager';
 
 interface DashboardProps {
   onUpgrade: () => void;
@@ -95,6 +98,32 @@ export function Dashboard({ onUpgrade, targetUserId }: DashboardProps) {
       unsubKeys();
     };
   }, [currentUid]);
+
+  // Auto-expiration observer
+  useEffect(() => {
+    if (!userData || isAdminViewing) return;
+    
+    const checkExpiration = async () => {
+      if (userData.expiresAt && userData.accountStatus === 'active') {
+        const expiry = userData.expiresAt.toDate();
+        if (expiry < new Date()) {
+          console.log("[Auto-Expire] Plan has ended. Updating status...");
+          try {
+            await updateDoc(doc(db, 'users', currentUid!), {
+              accountStatus: 'expired',
+              updatedAt: new Date()
+            });
+          } catch (err) {
+            console.error("[Auto-Expire] Failed to deactivate user:", err);
+          }
+        }
+      }
+    };
+
+    checkExpiration();
+    const interval = setInterval(checkExpiration, 60000); // Check every minute
+    return () => clearInterval(interval);
+  }, [userData, currentUid, isAdminViewing]);
 
   const handleAdminUpdate = async () => {
     if (!currentUid || !isAdminViewing) return;
@@ -188,7 +217,9 @@ export function Dashboard({ onUpgrade, targetUserId }: DashboardProps) {
         throw new Error(errorData.error || `Server returned ${res.status}`);
       }
 
-      const { url } = await res.json();
+      const { url, redirectUri } = await res.json();
+      console.log("[Discord] Generated Redirect URI:", redirectUri);
+      console.log("[Discord] Make sure this EXACT URL is in your Discord Developer Portal -> OAuth2 -> Redirects");
       
       const width = 500;
       const height = 750;
@@ -197,9 +228,15 @@ export function Dashboard({ onUpgrade, targetUserId }: DashboardProps) {
       
       window.open(url, 'discord_auth', `width=${width},height=${height},left=${left},top=${top}`);
     } catch (err: any) {
-      console.error(err);
-      const urlInfo = err.message.includes('Server returned') ? "\n\nTip: Contact admin to check if DISCORD_CLIENT_ID is configured." : "";
-      alert(`Discord Link Error: ${err.message || "Failed to initiate link"}${urlInfo}`);
+      console.error("[Discord Link Error]", err);
+      const is404 = err.message.includes('404');
+      const errorMsg = err.message || "Unknown error";
+      
+      const tip = is404 
+        ? "\n\nServer 404: The API route is missing. Please refresh the page and try again."
+        : `\n\nDebug Info:\nOrigin: ${window.location.origin}\nUID: ${currentUid}\n\nEnsure this EXACT URL is in your Discord Portal:\n${window.location.origin}/auth/discord/callback`;
+          
+      alert(`Discord Connection Error: ${errorMsg}${tip}`);
     }
   };
 
@@ -403,53 +440,7 @@ export function Dashboard({ onUpgrade, targetUserId }: DashboardProps) {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-        {/* Active Subscriptions */}
-        <div className="space-y-6">
-          <div className="flex items-center gap-3">
-            <ZapIcon className="w-6 h-6 text-primary" />
-            <h2 className="text-2xl font-black font-display uppercase tracking-widest italic">Live Contracts</h2>
-          </div>
-          
-          <div className="p-8 rounded-[32px] bg-gradient-to-br from-surface-dark to-black border border-white/5 shadow-2xl relative overflow-hidden">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 relative z-10">
-              <div className="space-y-4">
-                <div className="space-y-1">
-                  <p className="text-[10px] font-black text-white/25 uppercase tracking-[0.3em]">Current Status</p>
-                  <h3 className="text-3xl font-black font-display uppercase italic tracking-tighter text-white">
-                    {userData?.plan === 'none' || !userData?.plan ? 'RECON READY' : `${userData.plan} ACTIVE`}
-                  </h3>
-                </div>
-                
-                {userData?.expiresAt && (
-                  <div className="flex items-center gap-4">
-                    <div className="flex items-center gap-2 px-3 py-1.5 bg-white/5 rounded-full border border-white/5">
-                      <Calendar className="w-3.5 h-3.5 text-primary" />
-                      <span className="text-[10px] font-black uppercase text-white/60 tracking-widest">
-                        Until {userData.expiresAt.toDate().toLocaleDateString()}
-                      </span>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              <div className="flex flex-col gap-3">
-                <button 
-                  onClick={onUpgrade}
-                  className="h-12 px-8 rounded-xl bg-primary text-white text-[10px] font-black uppercase tracking-widest hover:bg-primary-dark transition-all shadow-lg shadow-primary/20"
-                >
-                  {userData?.plan === 'none' ? 'Enlist Now' : 'Extend Duration'}
-                </button>
-                {userData?.plan !== 'none' && (
-                  <button className="h-12 px-8 rounded-xl bg-white/5 hover:bg-white/10 text-white/40 text-[10px] font-black uppercase tracking-widest transition-all">
-                    Deactivate
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-
+      <div className="grid grid-cols-1 gap-8">
         {/* Purchase History */}
         <div className="space-y-6">
           <div className="flex items-center gap-3">
@@ -458,7 +449,7 @@ export function Dashboard({ onUpgrade, targetUserId }: DashboardProps) {
           </div>
 
           <div className="overflow-hidden rounded-[32px] border border-white/5 bg-surface-dark shadow-2xl">
-            <div className="max-h-[300px] overflow-y-auto">
+            <div className="max-h-[400px] overflow-y-auto">
               <table className="w-full text-left border-collapse">
                 <thead className="sticky top-0 bg-surface-dark z-20">
                   <tr className="border-b border-white/5">
@@ -497,6 +488,12 @@ export function Dashboard({ onUpgrade, targetUserId }: DashboardProps) {
           </div>
         </div>
       </div>
+
+      <CDKeyManager 
+        userId={currentUid!} 
+        keys={userKeys} 
+        isAdmin={userData?.role === 'admin' || isAdminViewing} 
+      />
     </div>
   );
 }
