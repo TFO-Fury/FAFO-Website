@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { getAppUrl } from '../_lib/app-url.js';
+import { getAppUrl } from '../../_lib/app-url.js';
 
 function getHeaderValue(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value;
