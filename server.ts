@@ -28,25 +28,26 @@ async function getDb() {
         // AI Studio Project ID is explicitly provided in the config.
         const targetProjectId = firebaseConfig.projectId;
         console.log(`[Firebase] Initializing Admin SDK with Project ID: ${targetProjectId}`);
-        
-        const adminAny = admin as any;
-        const credentialSource = adminAny.credential || adminAny.default?.credential;
-        
-        if (!credentialSource) {
-          throw new Error("Critical: firebase-admin credential object is missing.");
-        }
 
+        const serviceAccount = JSON.parse(
+          readFileSync(
+            new URL("./firebase-service-account.json", import.meta.url),
+            "utf-8"
+          )
+        );
+        
         initializeApp({
-          credential: credentialSource.applicationDefault(),
+          credential: admin.credential.cert(serviceAccount),
           projectId: targetProjectId,
         });
+        
       }
       
       const firebaseApp = getApp();
       const databaseId = firebaseConfig.firestoreDatabaseId;
       
       // Select the correct database instance.
-      if (databaseId && databaseId !== '(default)' && databaseId !== projectId) {
+      if (databaseId && databaseId !== '(default)' && databaseId !== targetProjectId) {
         console.log(`[Firebase] Connecting to Named Database Instance: "${databaseId}" in Project: "${projectId}"`);
         db = getFirestore(firebaseApp, databaseId);
       } else {
