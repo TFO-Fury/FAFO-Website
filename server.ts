@@ -2,10 +2,9 @@ import express from "express";
 import cors from "cors";
 import { createServer as createViteServer } from "vite";
 import path from "path";
-import { readFileSync } from "fs";
+import { existsSync, readFileSync } from "fs";
 import dotenv from "dotenv";
-import * as admin from 'firebase-admin';
-import { initializeApp, getApps, getApp } from 'firebase-admin/app';
+import { cert, initializeApp, getApps, getApp } from 'firebase-admin/app';
 import { getFirestore, FieldValue, Timestamp } from 'firebase-admin/firestore';
 import type { Firestore } from 'firebase-admin/firestore';
 import { nanoid } from 'nanoid';
@@ -19,39 +18,41 @@ const firebaseConfig = JSON.parse(
 dotenv.config();
 
 let db: Firestore | null = null;
+const serviceAccountPath = new URL("./firebase-service-account.json", import.meta.url);
+const firebaseProjectId = firebaseConfig.projectId;
+const firestoreDatabaseId = firebaseConfig.firestoreDatabaseId;
+
+function readServiceAccount() {
+  if (!existsSync(serviceAccountPath)) {
+    throw new Error(
+      'Missing firebase-service-account.json in the project root. Download the Firebase Admin SDK private key JSON and place it next to server.ts.'
+    );
+  }
+
+  return JSON.parse(readFileSync(serviceAccountPath, "utf-8"));
+}
 
 async function getDb() {
   if (!db) {
     try {
       const apps = getApps();
       if (apps.length === 0) {
-        // AI Studio Project ID is explicitly provided in the config.
-        const targetProjectId = firebaseConfig.projectId;
-        console.log(`[Firebase] Initializing Admin SDK with Project ID: ${targetProjectId}`);
-
-        const serviceAccount = JSON.parse(
-          readFileSync(
-            new URL("./firebase-service-account.json", import.meta.url),
-            "utf-8"
-          )
-        );
+        console.log(`[Firebase] Initializing Admin SDK with Project ID: ${firebaseProjectId}`);
         
         initializeApp({
-          credential: admin.credential.cert(serviceAccount),
-          projectId: targetProjectId,
+          credential: cert(readServiceAccount()),
+          projectId: firebaseProjectId,
         });
-        
       }
       
       const firebaseApp = getApp();
-      const databaseId = firebaseConfig.firestoreDatabaseId;
       
       // Select the correct database instance.
-      if (databaseId && databaseId !== '(default)' && databaseId !== targetProjectId) {
-        console.log(`[Firebase] Connecting to Named Database Instance: "${databaseId}" in Project: "${projectId}"`);
-        db = getFirestore(firebaseApp, databaseId);
+      if (firestoreDatabaseId && firestoreDatabaseId !== '(default)' && firestoreDatabaseId !== firebaseProjectId) {
+        console.log(`[Firebase] Connecting to Named Database Instance: "${firestoreDatabaseId}" in Project: "${firebaseProjectId}"`);
+        db = getFirestore(firebaseApp, firestoreDatabaseId);
       } else {
-        console.log(`[Firebase] Connecting to Default Database Instance in Project: "${projectId}"`);
+        console.log(`[Firebase] Connecting to Default Database Instance in Project: "${firebaseProjectId}"`);
         db = getFirestore(firebaseApp);
       }
 
@@ -70,7 +71,7 @@ async function getDb() {
     } catch (err) {
       console.error("[Firebase] Admin Initialization Failure:", err);
       const msg = err instanceof Error ? err.message : String(err);
-      throw new Error(`Cloud Storage Unavailable: ${msg}`);
+      throw new Error(`Firestore unavailable: ${msg}`);
     }
   }
   return db;
