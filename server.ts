@@ -128,6 +128,7 @@ async function startServer() {
   // Prevent caching of API responses
   apiRouter.use((req, res, next) => {
     console.log(`[API HIT] ${req.method} ${req.originalUrl}`);
+    res.setHeader("X-FAFO-Backend", "Express-Online");
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
     res.setHeader('Pragma', 'no-cache');
     res.setHeader('Expires', '0');
@@ -150,6 +151,14 @@ async function startServer() {
       timestamp: new Date().toISOString(),
       env: process.env.NODE_ENV,
       detectedUrl: getAppUrl(req)
+    });
+  });
+
+  apiRouter.get("/server-id", (req, res) => {
+    res.json({
+      online: true,
+      serverId: SERVER_ID,
+      timestamp: new Date().toISOString(),
     });
   });
 
