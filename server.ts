@@ -127,6 +127,7 @@ async function startServer() {
 
   // Prevent caching of API responses
   apiRouter.use((req, res, next) => {
+    console.log(`[API HIT] ${req.method} ${req.originalUrl}`);
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
     res.setHeader('Pragma', 'no-cache');
     res.setHeader('Expires', '0');

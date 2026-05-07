@@ -30,7 +30,9 @@ export function CDKeyManager({ userId, keys, isAdmin }: CDKeyManagerProps) {
     setIsSubmitting(true);
     
     try {
-      const res = await fetch('/api/keys/activate', {
+      const url = '/api/keys/activate';
+      console.log("Calling API:", url);
+      const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -71,7 +73,9 @@ export function CDKeyManager({ userId, keys, isAdmin }: CDKeyManagerProps) {
     console.log(`[CDKeyManager] Requesting deactivation for key: ${keyId}`);
     setIsSubmitting(true);
     try {
-      const res = await fetch('/api/keys/deactivate', {
+      const url = '/api/keys/deactivate';
+      console.log("Calling API:", url);
+      const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ keyId })

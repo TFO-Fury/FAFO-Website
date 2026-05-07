@@ -153,7 +153,9 @@ export function Dashboard({ onUpgrade, targetUserId }: DashboardProps) {
   const handleAdminSyncRoles = async () => {
     if (!currentUid) return;
     try {
-      const res = await fetch('/api/admin/user/sync-roles', {
+      const url = '/api/admin/user/sync-roles';
+      console.log("Calling API:", url);
+      const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: currentUid })
@@ -184,7 +186,9 @@ export function Dashboard({ onUpgrade, targetUserId }: DashboardProps) {
     setActivationResult(null);
 
     try {
-      const res = await fetch('/api/keys/activate', {
+      const url = '/api/keys/activate';
+      console.log("Calling API:", url);
+      const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -210,7 +214,13 @@ export function Dashboard({ onUpgrade, targetUserId }: DashboardProps) {
   const handleLinkDiscord = async () => {
     try {
       const roleType = userData?.plan === 'aio' ? 'aio' : (userData?.plan === 'trial' ? 'trial' : 'one-class');
-      const res = await fetch(`/api/auth/discord/url?roleType=${roleType}&userId=${currentUid}`);
+      const params = new URLSearchParams({
+        roleType,
+        userId: currentUid ?? '',
+      });
+      const url = `/api/auth/discord/url?${params.toString()}`;
+      console.log("Calling API:", url);
+      const res = await fetch(url);
       
       if (!res.ok) {
         let details = `Server returned ${res.status}`;

@@ -73,7 +73,9 @@ export default function App() {
   // Auth & Profile Listener
   useEffect(() => {
     // Backend health check
-    fetch('/api/health')
+    const url = '/api/health';
+    console.log("Calling API:", url);
+    fetch(url)
       .then(r => r.json())
       .then(data => console.log("[System] Backend Health:", data))
       .catch(err => console.error("[System] Backend unreachable:", err));

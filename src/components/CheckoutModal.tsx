@@ -75,7 +75,9 @@ export function CheckoutModal({ isOpen, onClose, user, userData, cart, total, is
 
       // 3. Notify Hub
       console.log("[CheckoutModal] Notifying backend...");
-      fetch('/api/payment/simulate', {
+      const notifyUrl = '/api/payment/simulate';
+      console.log("Calling API:", notifyUrl);
+      fetch(notifyUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: user.uid, plan, amount: total })
@@ -97,7 +99,13 @@ export function CheckoutModal({ isOpen, onClose, user, userData, cart, total, is
     try {
       setIsDiscordLoading(true);
       const roleTypes = Array.from(new Set(cart.map(i => i.type))).join(',');
-      const res = await fetch(`/api/auth/discord/url?roleType=${roleTypes}&userId=${user.uid}`);
+      const params = new URLSearchParams({
+        roleType: roleTypes,
+        userId: user.uid,
+      });
+      const url = `/api/auth/discord/url?${params.toString()}`;
+      console.log("Calling API:", url);
+      const res = await fetch(url);
       
       if (!res.ok) {
         let details = `Server returned ${res.status}`;
