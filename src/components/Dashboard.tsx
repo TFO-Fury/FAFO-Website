@@ -239,7 +239,7 @@ export function Dashboard({ onUpgrade, targetUserId }: DashboardProps) {
         throw new Error(details);
       }
 
-      const { url, redirectUri } = await res.json();
+      const { url: discordUrl, redirectUri } = await res.json();
       console.log("[Discord] Generated Redirect URI:", redirectUri);
       console.log("[Discord] Make sure this EXACT URL is in your Discord Developer Portal -> OAuth2 -> Redirects");
       
