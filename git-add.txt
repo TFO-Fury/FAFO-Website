@@ -1,5 +1,0 @@
-warning: in the working copy of 'api/_lib/body.ts', LF will be replaced by CRLF the next time Git touches it
-warning: in the working copy of 'api/_lib/discord.ts', LF will be replaced by CRLF the next time Git touches it
-warning: in the working copy of 'api/_lib/firebase-admin.ts', LF will be replaced by CRLF the next time Git touches it
-warning: in the working copy of 'api/admin/user/sync-roles.ts', LF will be replaced by CRLF the next time Git touches it
-warning: in the working copy of 'api/keys/activate.ts', LF will be replaced by CRLF the next time Git touches it

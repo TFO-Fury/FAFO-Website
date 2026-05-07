@@ -1,8 +1,0 @@
-A  api/_lib/body.ts
-A  api/_lib/discord.ts
-A  api/_lib/firebase-admin.ts
-A  api/admin/user/sync-roles.ts
-A  api/keys/activate.ts
-AM git-add.txt
-?? git-log-check.txt
-?? git-status-check.txt

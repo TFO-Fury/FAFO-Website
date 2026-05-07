@@ -1,16 +1,8 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { getAppUrl } from '../_lib/app-url.js';
 
 function getHeaderValue(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value;
-}
-
-function getAppUrl(req: VercelRequest) {
-  if (process.env.APP_URL) return process.env.APP_URL.replace(/\/$/, '');
-
-  const protocol = getHeaderValue(req.headers['x-forwarded-proto']) || 'https';
-  const host = getHeaderValue(req.headers['x-forwarded-host']) || req.headers.host;
-
-  return `${protocol}://${host}`;
 }
 
 export default function handler(req: VercelRequest, res: VercelResponse) {
