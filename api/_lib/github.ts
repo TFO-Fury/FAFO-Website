@@ -47,12 +47,16 @@ export async function syncKeyToGithub(
     }
 
     const userData = userDoc.data();
+    const rawAio = userData?.aioExpires?.toDate?.()?.toISOString?.() || userData?.aioExpires || '(none)';
+    const rawClasses = userData?.classEntitlements ? Object.keys(userData.classEntitlements).join(', ') : '(none)';
     console.log(`[GitHubSync] User loaded:`, {
       exists: true,
-      plan: userData?.plan,
-      selectedClass: userData?.selectedClass || '(none)',
       accountStatus: userData?.accountStatus,
-      expiresAt: userData?.expiresAt?.toDate?.()?.toISOString?.() || userData?.expiresAt || '(none)'
+      aioExpires: rawAio,
+      classEntitlements: rawClasses,
+      legacyPlan: userData?.plan || '(none)',
+      legacySelectedClass: userData?.selectedClass || '(none)',
+      legacyExpiresAt: userData?.expiresAt?.toDate?.()?.toISOString?.() || userData?.expiresAt || '(none)'
     });
 
     if (!userData || userData.accountStatus !== 'active') {
@@ -236,7 +240,7 @@ export async function syncKeyToGithub(
         owner: GITHUB_OWNER,
         repo: GITHUB_REPO,
         path: filePath,
-        message: `Sync license ${safeKey} for user ${userId} (${plan})`,
+        message: `Sync license ${safeKey} for user ${userId} (AIO=${!!normalized.aioExpires}, classes=[${Object.keys(normalized.classEntitlements).join(', ')}])`,
         content: contentEncoded,
         sha
       });
@@ -250,8 +254,20 @@ export async function syncKeyToGithub(
 
     const action = sha ? 'Updated' : 'Created';
     console.log(`[GitHubSync] ${action} file: ${filePath}`);
-    if (selectedClass) {
-      console.log(`[License] Selected class synced: ${selectedClass}`);
+    const activeClasses = Object.entries(normalized.classEntitlements)
+      .filter(([, v]) => {
+        const d = v.expires?.toDate ? v.expires.toDate() : new Date(v.expires);
+        return !isNaN(d.getTime()) && d > new Date();
+      })
+      .map(([k]) => k);
+    if (activeClasses.length > 0) {
+      console.log(`[License] Active classes synced: ${activeClasses.join(', ')}`);
+    }
+    if (normalized.aioExpires) {
+      const aioDate = normalized.aioExpires?.toDate ? normalized.aioExpires.toDate() : new Date(normalized.aioExpires);
+      if (!isNaN(aioDate.getTime()) && aioDate > new Date()) {
+        console.log(`[License] AIO active until: ${aioDate.toISOString()}`);
+      }
     }
     console.log(`[GitHubSync] === END syncKeyToGithub ===`);
 
