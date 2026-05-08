@@ -49,6 +49,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const payerEmail = captureResult?.payer?.email_address || null;
     const transactionId = captureResult?.purchase_units?.[0]?.payments?.captures?.[0]?.id || null;
 
+    // DEDUPLICATION: check if this transactionId or orderId already processed
+    if (transactionId) {
+      const dupCheck = await firestore.collection('orders')
+        .where('transactionId', '==', transactionId)
+        .limit(1)
+        .get();
+      if (!dupCheck.empty) {
+        console.log(`[PayPalCapture] Deduplication: transactionId=${transactionId} already processed, skipping`);
+        return res.status(200).json({ success: true, deduplicated: true, transactionId });
+      }
+    }
+    const dupCheckOrder = await firestore.collection('orders')
+      .where('orderId', '==', orderId)
+      .limit(1)
+      .get();
+    if (!dupCheckOrder.empty) {
+      console.log(`[PayPalCapture] Deduplication: orderId=${orderId} already processed, skipping`);
+      return res.status(200).json({ success: true, deduplicated: true, orderId });
+    }
+
     const days = plan === 'trial' ? 3 : 30;
     const expirationDate = new Date();
     expirationDate.setDate(expirationDate.getDate() + days);
@@ -99,6 +119,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       paymentProvider: 'paypal',
       paymentStatus: 'completed',
       transactionId,
+      orderId,
       subscriptionId: null,
       excludedFromRevenue: false,
       createdAt: FieldValue.serverTimestamp()

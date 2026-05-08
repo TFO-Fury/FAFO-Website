@@ -71,15 +71,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const userDoc = await userRef.get();
       const existingData = userDoc.exists ? userDoc.data() : null;
 
-      // Check if already processed
-      const ordersQuery = await firestore.collection('orders')
-        .where('userId', '==', userId)
-        .where('transactionId', '==', resource?.purchase_units?.[0]?.payments?.captures?.[0]?.id || orderId)
+      const captureId = resource?.purchase_units?.[0]?.payments?.captures?.[0]?.id;
+      const dedupId = captureId || orderId;
+
+      // Check if already processed (by transactionId or orderId)
+      let ordersQuery = await firestore.collection('orders')
+        .where('transactionId', '==', dedupId)
         .limit(1)
         .get();
 
+      if (ordersQuery.empty && orderId) {
+        ordersQuery = await firestore.collection('orders')
+          .where('orderId', '==', orderId)
+          .limit(1)
+          .get();
+      }
+
       if (!ordersQuery.empty) {
-        console.log(`[PayPalWebhook] Order ${orderId} already processed, skipping`);
+        console.log(`[PayPalWebhook] Deduplication: Order ${orderId} already processed, skipping`);
         return;
       }
 
@@ -120,7 +129,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         source: 'paypal',
         paymentProvider: 'paypal',
         paymentStatus: 'completed',
-        transactionId: resource?.purchase_units?.[0]?.payments?.captures?.[0]?.id || orderId,
+        transactionId: captureId || null,
+        orderId,
         subscriptionId: null,
         excludedFromRevenue: false,
         createdAt: FieldValue.serverTimestamp()
@@ -130,6 +140,34 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       triggerLicenseSync(userId, 'paypal-webhook').catch((err: any) => console.error('[LicenseSync] Webhook sync failed:', err));
 
       console.log(`[PayPalWebhook] Completed processing ${orderId} for user ${userId}`);
+    }
+
+    if (eventType === 'BILLING.SUBSCRIPTION.CANCELLED') {
+      const subscriptionId = resource?.id;
+      if (!subscriptionId) {
+        console.warn('[PayPalWebhook] Missing subscription ID in cancellation event');
+        return;
+      }
+
+      // Find user with matching subscriptionId
+      const usersQuery = await firestore.collection('users')
+        .where('subscriptionId', '==', subscriptionId)
+        .limit(1)
+        .get();
+
+      if (usersQuery.empty) {
+        console.warn(`[PayPalWebhook] No user found for cancelled subscription ${subscriptionId}`);
+        return;
+      }
+
+      const userRef = usersQuery.docs[0].ref;
+      await userRef.set({
+        subscriptionStatus: 'cancelled',
+        subscriptionCancelledAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp()
+      }, { merge: true });
+
+      console.log(`[PayPalWebhook] Subscription ${subscriptionId} marked as cancelled (entitlements preserved until expiration)`);
     }
   } catch (err: any) {
     console.error('[PayPalWebhook] Processing error:', err);

@@ -45,12 +45,30 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const activePayers = new Set<string>();
 
     const now = new Date();
+    const mrrCutoff = new Date();
+    mrrCutoff.setDate(mrrCutoff.getDate() - 30);
 
     snapshot.docs.forEach(doc => {
       const d = doc.data();
-      if (d.excludedFromRevenue) return;
-      if (d.paymentStatus !== 'completed') return;
-      if (!d.amount) return;
+      const docId = doc.id;
+      const currency = (d.currency || 'USD').toUpperCase();
+
+      if (d.excludedFromRevenue) {
+        console.log(`[Revenue] Ignored excluded order ${docId}: source=${d.source || 'unknown'}, amount=${d.amount}, currency=${currency}`);
+        return;
+      }
+      if (d.paymentStatus !== 'completed') {
+        console.log(`[Revenue] Ignored incomplete order ${docId}: status=${d.paymentStatus}, amount=${d.amount}`);
+        return;
+      }
+      if (!d.amount) {
+        console.log(`[Revenue] Ignored zero-amount order ${docId}`);
+        return;
+      }
+      if (currency !== 'USD') {
+        console.log(`[Revenue] Ignored non-USD order ${docId}: amount=${d.amount}, currency=${currency}`);
+        return;
+      }
 
       const amt = parseFloat(d.amount) || 0;
       totalRevenue += amt;
@@ -63,21 +81,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       daily[dayKey] = (daily[dayKey] || 0) + amt;
       monthly[monthKey] = (monthly[monthKey] || 0) + amt;
 
+      if (date >= mrrCutoff) {
+        mrr += amt;
+      }
+
       if (d.plan) planCounts[d.plan] = (planCounts[d.plan] || 0) + 1;
       if (d.userId) activePayers.add(d.userId);
-    });
 
-    // Approximate MRR: revenue in the last 30 days
-    const mrrCutoff = new Date();
-    mrrCutoff.setDate(mrrCutoff.getDate() - 30);
-    snapshot.docs.forEach(doc => {
-      const d = doc.data();
-      if (d.excludedFromRevenue) return;
-      if (d.paymentStatus !== 'completed') return;
-      const date = d.createdAt?.toDate ? d.createdAt.toDate() : new Date(d.createdAt);
-      if (date >= mrrCutoff) {
-        mrr += parseFloat(d.amount) || 0;
-      }
+      console.log(`[Revenue] Counted order ${docId}: source=${d.source || 'unknown'}, plan=${d.plan || 'unknown'}, amount=${amt}, currency=${currency}, date=${dayKey}`);
     });
 
     // Count active subscribers from users collection

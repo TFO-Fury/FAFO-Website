@@ -104,19 +104,28 @@ export function CheckoutModal({ isOpen, onClose, user, userData, cart, total, is
 
       console.log("[CheckoutModal] Profile update SUCCESS");
 
-      // 2. Log Purchase
+      // 2. Log Order
       try {
-        console.log("[CheckoutModal] Logging purchase record...");
-        await addDoc(collection(db, 'purchases'), {
+        console.log("[CheckoutModal] Logging order record...");
+        const isDev = method === 'DevTest';
+        await addDoc(collection(db, 'orders'), {
           userId: user.uid,
+          email: user.email || null,
           plan,
+          className: className || null,
           amount: total,
-          status: 'completed',
+          currency: 'USD',
+          source: isDev ? 'admin-dev' : 'stripe',
+          paymentProvider: isDev ? null : 'stripe',
+          paymentStatus: 'completed',
+          transactionId: null,
+          subscriptionId: null,
+          excludedFromRevenue: isDev,
           createdAt: serverTimestamp()
         });
-        console.log("[CheckoutModal] Purchase log SUCCESS");
+        console.log(`[CheckoutModal] Order log SUCCESS (source=${isDev ? 'admin-dev' : 'stripe'}, excludedFromRevenue=${isDev})`);
       } catch (e) {
-        console.warn("[CheckoutModal] Purchase log failed (non-critical):", e);
+        console.warn("[CheckoutModal] Order log failed (non-critical):", e);
       }
 
       // 3. Notify Hub
