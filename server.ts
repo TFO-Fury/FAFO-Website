@@ -377,9 +377,27 @@ async function startServer() {
       console.log(`[API] Post-commit key read: exists=${keyVerify.exists}, id=${keyVerify.id}, data=${JSON.stringify(keyVerify.data())}`);
 
       syncDiscord(userId, plan).catch(err => console.error("[Discord Sync Error]", err));
-      const githubResult = await syncKeyToGithub(userId, key);
-      console.log(`[GitHubSync] Activation trigger result:`, githubResult);
-      res.json({ success: true, plan, expiresAt: expirationDate, className: reqClassName || null });
+
+      let githubResult;
+      let githubSyncFailed = false;
+      try {
+        githubResult = await syncKeyToGithub(userId, key);
+        console.log(`[GitHubSync] Activation trigger result:`, githubResult);
+      } catch (syncErr: any) {
+        console.error(`[GitHubSync] CRITICAL: syncKeyToGithub threw unexpectedly. This should never happen. Error:`, syncErr);
+        githubResult = { success: false, error: syncErr.message || 'Unexpected GitHub sync crash' };
+        githubSyncFailed = true;
+      }
+
+      res.json({
+        success: true,
+        activationSuccess: true,
+        githubSyncFailed,
+        githubSync: githubResult || { success: false, error: 'No result' },
+        plan,
+        expiresAt: expirationDate,
+        className: reqClassName || null
+      });
     } catch (err: any) {
       console.error("[Activation Error]", err);
       res.status(500).json({ error: "Server error during activation: " + err.message });

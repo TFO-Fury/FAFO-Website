@@ -53,10 +53,7 @@ export async function syncKeyToGithub(
       exists: true,
       accountStatus: userData?.accountStatus,
       aioExpires: rawAio,
-      classEntitlements: rawClasses,
-      legacyPlan: userData?.plan || '(none)',
-      legacySelectedClass: userData?.selectedClass || '(none)',
-      legacyExpiresAt: userData?.expiresAt?.toDate?.()?.toISOString?.() || userData?.expiresAt || '(none)'
+      classEntitlements: rawClasses
     });
 
     if (!userData || userData.accountStatus !== 'active') {
@@ -146,7 +143,7 @@ export async function syncKeyToGithub(
 
     // --- NORMALIZE ENTITLEMENTS ---
     const normalized = normalizeEntitlements(userData);
-    console.log(`[GitHubSync] Normalized entitlements: plan=${normalized.plan}, aioExpires=${normalized.aioExpires ? 'set' : 'none'}, classes=[${Object.keys(normalized.classEntitlements).join(', ')}], migrated=${normalized.migrated}`);
+    console.log(`[GitHubSync] Normalized entitlements: aioExpires=${normalized.aioExpires ? 'set' : 'none'}, classes=[${Object.keys(normalized.classEntitlements).join(', ')}], migrated=${normalized.migrated}`);
 
     const activeClasses = Object.entries(normalized.classEntitlements).filter(([, v]) => {
       const d = v.expires?.toDate ? v.expires.toDate() : (v.expires instanceof Date ? v.expires : new Date(v.expires));
@@ -249,7 +246,15 @@ export async function syncKeyToGithub(
       console.log(`[GitHubSync] GitHub write SUCCESS. HTTP status=${response.status}, commit SHA=${response.data.commit.sha}`);
     } catch (ghErr: any) {
       console.error(`[GitHubSync] GitHub write FAILED. HTTP status=${ghErr.status}, Message: ${ghErr.message}, Response:`, ghErr.response?.data || '(no response data)');
-      throw ghErr;
+      console.error(`[GitHubSync] === SYNC FAILED ===`);
+      return {
+        success: false,
+        error: ghErr.message || 'GitHub write failed',
+        githubStatus: ghErr.status,
+        githubResponse: ghErr.response?.data || null,
+        selectedKey: safeKey,
+        path: filePath
+      };
     }
 
     const action = sha ? 'Updated' : 'Created';
