@@ -181,7 +181,21 @@ export function AdminPanel({ onViewUser }: AdminPanelProps) {
                     <span className="text-white font-bold text-sm tracking-tight">{user.email}</span>
                     <div className="flex items-center gap-1.5 overflow-hidden">
                       <span className="text-[9px] font-mono text-white/20 uppercase truncate max-w-[120px]">{user.id}</span>
-                      {user.role === 'admin' && <ShieldCheck className="w-3 h-3 text-primary flex-shrink-0" />}
+                      {user.role === 'admin' && (
+                        <span className="px-1.5 py-0.5 rounded bg-primary/20 border border-primary/20 text-[8px] font-black uppercase text-primary tracking-widest flex items-center gap-1 flex-shrink-0">
+                          <ShieldCheck className="w-2.5 h-2.5" /> Admin
+                        </span>
+                      )}
+                      {user.role === 'owner' && (
+                        <span className="px-1.5 py-0.5 rounded bg-orange-500/20 border border-orange-500/20 text-[8px] font-black uppercase text-orange-500 tracking-widest flex items-center gap-1 flex-shrink-0">
+                          <ShieldCheck className="w-2.5 h-2.5" /> Owner
+                        </span>
+                      )}
+                      {user.role === 'trial' && (
+                        <span className="px-1.5 py-0.5 rounded bg-purple-500/20 border border-purple-500/20 text-[8px] font-black uppercase text-purple-500 tracking-widest flex items-center gap-1 flex-shrink-0">
+                          <ShieldCheck className="w-2.5 h-2.5" /> Trial
+                        </span>
+                      )}
                     </div>
                   </div>
                 </td>
@@ -207,13 +221,15 @@ export function AdminPanel({ onViewUser }: AdminPanelProps) {
                         <option value="inactive">Inactive</option>
                         <option value="expired">Expired</option>
                       </select>
-                      <select 
-                        value={editForm.role} 
+                      <select
+                        value={editForm.role}
                         onChange={(e) => setEditForm({...editForm, role: e.target.value})}
                         className="w-full h-9 rounded-lg bg-background border border-white/10 text-xs font-bold uppercase px-3"
                       >
                         <option value="user">User</option>
+                        <option value="trial">Trial</option>
                         <option value="admin">Admin</option>
+                        <option value="owner">Owner</option>
                       </select>
                     </div>
                   ) : (

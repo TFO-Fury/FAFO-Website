@@ -26,7 +26,7 @@ import { useState, useEffect } from "react";
 import { auth, db } from "./lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
 import { doc, onSnapshot, updateDoc, serverTimestamp, collection, addDoc, setDoc } from "firebase/firestore";
-import { Auth, logout } from "./components/Auth";
+import { Auth, logout, isAdmin, isOwner } from "./components/Auth";
 import { Dashboard } from "./components/Dashboard";
 import { AdminPanel } from "./components/AdminPanel";
 import { CheckoutModal } from "./components/CheckoutModal";
@@ -107,6 +107,14 @@ export default function App() {
 
     return () => unsubProfile();
   }, [user]);
+
+  // Admin route guard
+  useEffect(() => {
+    if (view === 'admin' && userData && !isAdmin(userData) && !isOwner(userData)) {
+      console.warn(`[Auth] Blocked non-admin access to admin view by ${user?.email || 'unknown'}`);
+      setView('dashboard');
+    }
+  }, [view, userData, user]);
 
   // Auto-hide error and notification
   useEffect(() => {
@@ -294,16 +302,16 @@ export default function App() {
 
           <div className="flex items-center gap-4">
             {(() => {
-              const isAdmin = (userData?.isAdmin) || (user?.email?.toLowerCase() === 'nick9284@gmail.com');
-              if (isAdmin && user) {
-                console.log(`[Admin] Granting access for ${user.email}. IsExplicitAdmin: ${userData?.isAdmin}`);
+              const canAccessAdmin = isAdmin(userData) || isOwner(userData);
+              if (canAccessAdmin && user) {
+                console.log(`[Admin] Granting access for ${user.email}. Role: ${userData?.role}`);
               }
-              return isAdmin && (
-                <button 
+              return canAccessAdmin && (
+                <button
                   onClick={() => setView('admin')}
                   className={`px-4 py-2 rounded-xl transition-all text-[10px] font-black uppercase tracking-widest border border-white shadow-2xl ${view === 'admin' ? 'bg-primary text-white shadow-lg shadow-primary/20 border-primary' : 'bg-primary/10 text-primary border-primary/20 hover:bg-primary hover:text-white'}`}
                 >
-                  Admin
+                  {isOwner(userData) ? 'Owner' : 'Admin'}
                 </button>
               );
             })()}

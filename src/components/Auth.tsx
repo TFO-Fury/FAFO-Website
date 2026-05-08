@@ -11,6 +11,28 @@ import { doc, setDoc, serverTimestamp, getDoc } from 'firebase/firestore';
 import { motion } from 'motion/react';
 import { Mail, Lock, UserPlus, LogIn, AlertCircle, X, Eye, EyeOff } from 'lucide-react';
 
+const OWNER_EMAIL = 'nick9284@gmail.com';
+const ADMIN_EMAILS = [
+  'darkosemail428@gmail.com',
+  'emitchell109@gmail.com',
+];
+
+export function getRoleForEmail(email: string | null | undefined): 'owner' | 'admin' | 'user' | 'trial' {
+  if (!email) return 'user';
+  const normalized = email.toLowerCase().trim();
+  if (normalized === OWNER_EMAIL) return 'owner';
+  if (ADMIN_EMAILS.includes(normalized)) return 'admin';
+  return 'user';
+}
+
+export function isAdmin(userData: any): boolean {
+  return userData?.role === 'admin' || userData?.role === 'owner';
+}
+
+export function isOwner(userData: any): boolean {
+  return userData?.role === 'owner';
+}
+
 interface AuthProps {
   onClose: () => void;
 }
@@ -26,7 +48,8 @@ export function Auth({ onClose }: AuthProps) {
   const initUserProfile = async (user: any) => {
     const userRef = doc(db, 'users', user.uid);
     const userDoc = await getDoc(userRef);
-    
+    const role = getRoleForEmail(user.email);
+
     if (!userDoc.exists()) {
       console.log(`[Auth] Creating new user profile for ${user.email} (${user.uid})`);
       const userPath = `users/${user.uid}`;
@@ -37,16 +60,26 @@ export function Auth({ onClose }: AuthProps) {
           accountStatus: 'inactive',
           discordId: null,
           isAdmin: false,
+          role,
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp()
         });
-        console.log(`[Auth] User profile created successfully for ${user.uid}`);
+        console.log(`[Auth] User profile created successfully for ${user.uid} with role '${role}'`);
       } catch (dbErr) {
         console.error(`[Auth] Failed to create user profile for ${user.uid}:`, dbErr);
         handleFirestoreError(dbErr, OperationType.CREATE, userPath);
       }
     } else {
       console.log(`[Auth] User profile already exists for ${user.uid}`);
+      const data = userDoc.data();
+      if (!data.role) {
+        try {
+          await setDoc(userRef, { role, updatedAt: serverTimestamp() }, { merge: true });
+          console.log(`[Auth] Upgraded existing user ${user.uid} with role '${role}'`);
+        } catch (e) {
+          console.error(`[Auth] Failed to upgrade role for existing user ${user.uid}:`, e);
+        }
+      }
     }
   };
 

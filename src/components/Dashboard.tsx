@@ -21,6 +21,7 @@ import {
   ShieldCheck as ShieldCheckIcon
 } from 'lucide-react';
 import { CDKeyManager } from './CDKeyManager';
+import { isAdmin, isOwner } from './Auth';
 
 interface DashboardProps {
   onUpgrade: () => void;
@@ -304,10 +305,12 @@ export function Dashboard({ onUpgrade, targetUserId }: DashboardProps) {
           <p className="text-white/40 font-medium tracking-tight uppercase text-xs tracking-[0.2em]">Manage subscriptions and access</p>
         </div>
         
-        {userData?.role === 'admin' && (
+        {(isAdmin(userData) || isOwner(userData)) && (
           <div className="px-4 py-2 bg-primary/10 border border-primary/20 rounded-xl flex items-center gap-2">
             <ShieldCheck className="w-4 h-4 text-primary" />
-            <span className="text-[10px] font-black uppercase text-primary tracking-widest">Admin Access Enabled</span>
+            <span className="text-[10px] font-black uppercase text-primary tracking-widest">
+              {isOwner(userData) ? 'Owner Access Enabled' : 'Admin Access Enabled'}
+            </span>
           </div>
         )}
       </div>
@@ -509,7 +512,7 @@ export function Dashboard({ onUpgrade, targetUserId }: DashboardProps) {
       <CDKeyManager 
         userId={currentUid!} 
         keys={userKeys} 
-        isAdmin={userData?.role === 'admin' || isAdminViewing} 
+        isAdmin={isAdmin(userData) || isAdminViewing}
       />
     </div>
   );
