@@ -391,6 +391,22 @@ export function Dashboard({ onUpgrade, targetUserId }: DashboardProps) {
                     {userData?.plan === 'aio' ? 'All-In-One' : userData?.plan === 'single' ? 'Single Class' : userData?.plan === 'trial' ? '3-Day Trial' : 'No License'}
                   </span>
                 </div>
+                {((userData?.plan === 'single' && userData?.selectedClass) || userData?.plan === 'aio') && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-black text-white/25 uppercase tracking-widest">Class</span>
+                    <span className="px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border bg-white/5 text-white/60 border-white/10">
+                      {userData?.plan === 'aio' ? 'All Classes' : userData?.selectedClass ? userData.selectedClass.split(' ').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ') : 'Unknown Class'}
+                    </span>
+                  </div>
+                )}
+                {userData?.plan === 'single' && !userData?.selectedClass && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-black text-white/25 uppercase tracking-widest">Class</span>
+                    <span className="px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border bg-red-500/10 text-red-500 border-red-500/20">
+                      Unknown Class
+                    </span>
+                  </div>
+                )}
                 <div className="flex items-center justify-between">
                   <span className="text-[10px] font-black text-white/25 uppercase tracking-widest">Account Status</span>
                   <span className={`flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest ${userData?.accountStatus === 'active' && !isExpired ? 'text-green-500' : 'text-red-500'}`}>

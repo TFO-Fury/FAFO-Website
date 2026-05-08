@@ -279,9 +279,31 @@ export function AdminPanel({ onViewUser }: AdminPanelProps) {
                     </div>
                   ) : (
                     <div className="flex flex-col gap-1.5">
-                      <span className={`w-fit px-2.5 py-0.5 rounded text-[9px] font-black uppercase tracking-widest ${user.plan !== 'none' ? 'bg-primary/20 text-primary border border-primary/20' : 'bg-white/5 text-white/40'}`}>
-                        {user.plan}
-                      </span>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className={`w-fit px-2.5 py-0.5 rounded text-[9px] font-black uppercase tracking-widest ${user.plan !== 'none' ? 'bg-primary/20 text-primary border border-primary/20' : 'bg-white/5 text-white/40'}`}>
+                          {user.plan}
+                        </span>
+                        {user.plan === 'aio' && (
+                          <span className="px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-widest bg-white/5 text-white/60 border border-white/10">
+                            All Classes
+                          </span>
+                        )}
+                        {user.plan === 'single' && user.selectedClass && (
+                          <span className="px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-widest bg-blue-500/10 text-blue-500 border border-blue-500/20">
+                            {typeof user.selectedClass === 'string' ? user.selectedClass.split(' ').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ') : user.selectedClass}
+                          </span>
+                        )}
+                        {user.plan === 'single' && !user.selectedClass && (
+                          <span className="px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-widest bg-red-500/10 text-red-500 border border-red-500/20">
+                            Unknown Class
+                          </span>
+                        )}
+                        {user.plan === 'trial' && user.selectedClass && (
+                          <span className="px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-widest bg-purple-500/10 text-purple-500 border border-purple-500/20">
+                            {typeof user.selectedClass === 'string' ? user.selectedClass.split(' ').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ') : user.selectedClass}
+                          </span>
+                        )}
+                      </div>
                       <span className={`text-[10px] font-bold uppercase tracking-tight ${user.accountStatus === 'active' ? 'text-green-500' : 'text-red-500'}`}>
                         {user.accountStatus}
                       </span>
