@@ -622,5 +622,6 @@ export function AdminPanel({ onViewUser }: AdminPanelProps) {
           </>
         )}
       </div>
+    </div>
   );
 }
