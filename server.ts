@@ -238,8 +238,8 @@ async function startServer() {
   });
 
   apiRouter.post("/keys/activate", async (req, res) => {
-    const { key, userId, plan = 'aio', selectedClass: reqSelectedClass } = req.body;
-    console.log(`[API] Activate Key Request: ${key} for user ${userId} (Plan: ${plan})`);
+    const { key, userId, plan: reqPlan, selectedClass: reqSelectedClass } = req.body;
+    console.log(`[API] Activate Key Request: ${key} for user ${userId} (reqPlan: ${reqPlan || '(none)'})`);
 
     if (!key || !userId) {
       console.warn("[API] Missing key or userId in activation request");
@@ -251,27 +251,35 @@ async function startServer() {
       const keyRef = firestore.collection('cd_keys').doc(key);
       const keySnap = await keyRef.get();
 
+      // Read existing user metadata FIRST to preserve plan and selectedClass
+      const userDoc = await firestore.collection('users').doc(userId).get();
+      const existingUserData = userDoc.exists ? userDoc.data() : null;
+      const existingPlan = existingUserData?.plan || 'none';
+      const existingSelectedClass = existingUserData?.selectedClass || null;
+
+      // Preserve existing plan unless explicitly overridden in request
+      const plan = reqPlan || existingPlan;
+      console.log(`[API] Plan resolution: existingPlan=${existingPlan}, reqPlan=${reqPlan || '(none)'}, resolved=${plan}`);
+
       const days = plan === 'trial' ? 3 : 30;
       const expirationDate = new Date();
       expirationDate.setDate(expirationDate.getDate() + days);
 
       console.log(`[API] Processing key ${key}. Exists: ${keySnap.exists}. Expiration: ${expirationDate.toISOString()}`);
 
-      // Preserve existing selectedClass on renewal unless explicitly provided
-      const userDoc = await firestore.collection('users').doc(userId).get();
-      const existingUserData = userDoc.exists ? userDoc.data() : null;
-
       let selectedClass = reqSelectedClass;
       if (!selectedClass && keySnap.exists) {
         const keyData = keySnap.data();
         selectedClass = keyData?.selectedClass;
       }
-      if (!selectedClass && existingUserData?.selectedClass) {
-        selectedClass = existingUserData.selectedClass;
+      if (!selectedClass && existingSelectedClass) {
+        selectedClass = existingSelectedClass;
       }
       if (plan === 'aio') {
         selectedClass = 'all';
       }
+
+      console.log(`[API] selectedClass resolution: existing=${existingSelectedClass || '(none)'}, req=${reqSelectedClass || '(none)'}, resolved=${selectedClass || '(none)'}`);
 
       const batch = firestore.batch();
 
@@ -321,7 +329,7 @@ async function startServer() {
       }, { merge: true });
 
       await batch.commit();
-      console.log(`[API] Successfully committed activation for user ${userId}`);
+      console.log(`[API] Activation committed. userId=${userId}, previousPlan=${existingPlan}, previousSelectedClass=${existingSelectedClass || '(none)'}, updatedPlan=${plan}, updatedSelectedClass=${selectedClass || '(none)'}`);
 
       syncDiscord(userId, plan).catch(err => console.error("[Discord Sync Error]", err));
       const githubResult = await syncKeyToGithub(userId, key);

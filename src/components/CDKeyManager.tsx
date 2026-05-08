@@ -37,8 +37,7 @@ export function CDKeyManager({ userId, keys, isAdmin }: CDKeyManagerProps) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           key: trimmedKey,
-          userId: userId,
-          plan: 'aio'
+          userId: userId
         })
       });
 
