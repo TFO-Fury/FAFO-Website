@@ -328,73 +328,75 @@ export function AdminPanel({ onViewUser }: AdminPanelProps) {
                         />
                       </div>
 
-                      {/* Class Entitlements Editor */}
-                      <div className="space-y-1 pt-1">
-                        <label className="text-[10px] font-black text-white/25 uppercase tracking-widest block">Class Entitlements</label>
-                        {editForm.classEntitlements && Object.entries(editForm.classEntitlements).map(([cls, ent]: [string, any]) => (
-                          <div key={cls} className="flex items-center gap-2">
-                            <span className="text-[10px] font-bold text-white/60 uppercase w-20 truncate">{formatClassName(cls)}</span>
+                      {/* Class Entitlements Editor — hidden when AIO active */}
+                      {editForm.plan !== 'aio' && editForm.plan !== 'trial' && (
+                        <div className="space-y-1 pt-1">
+                          <label className="text-[10px] font-black text-white/25 uppercase tracking-widest block">Class Entitlements</label>
+                          {editForm.classEntitlements && Object.entries(editForm.classEntitlements).map(([cls, ent]: [string, any]) => (
+                            <div key={cls} className="flex items-center gap-2">
+                              <span className="text-[10px] font-bold text-white/60 uppercase w-20 truncate">{formatClassName(cls)}</span>
+                              <input
+                                type="date"
+                                value={ent?.expires || ''}
+                                onChange={(e) => {
+                                  const updated = { ...editForm.classEntitlements };
+                                  updated[cls] = { ...updated[cls], expires: e.target.value };
+                                  setEditForm({...editForm, classEntitlements: updated});
+                                }}
+                                className="flex-1 h-8 rounded-lg bg-background border border-white/10 text-[10px] font-bold uppercase px-2 text-white/60"
+                              />
+                              <button
+                                onClick={() => {
+                                  const updated = { ...editForm.classEntitlements };
+                                  delete updated[cls];
+                                  setEditForm({...editForm, classEntitlements: updated});
+                                }}
+                                className="p-1.5 rounded bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white transition-all"
+                                title="Remove class"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </button>
+                            </div>
+                          ))}
+                          {/* Add Class */}
+                          <div className="flex items-center gap-2 pt-1">
+                            <select
+                              value={editForm._newClass || ''}
+                              onChange={(e) => setEditForm({...editForm, _newClass: e.target.value})}
+                              className="flex-1 h-8 rounded-lg bg-background border border-white/10 text-[10px] font-bold uppercase px-2 text-white/60"
+                            >
+                              <option value="">Select Class</option>
+                              {[
+                                'deathknight', 'demonhunter', 'druid', 'evoker', 'hunter',
+                                'mage', 'monk', 'paladin', 'priest', 'rogue',
+                                'shaman', 'warlock', 'warrior'
+                              ].filter(c => !editForm.classEntitlements?.[c]).map(c => (
+                                <option key={c} value={c}>{formatClassName(c)}</option>
+                              ))}
+                            </select>
                             <input
                               type="date"
-                              value={ent?.expires || ''}
-                              onChange={(e) => {
-                                const updated = { ...editForm.classEntitlements };
-                                updated[cls] = { ...updated[cls], expires: e.target.value };
-                                setEditForm({...editForm, classEntitlements: updated});
-                              }}
-                              className="flex-1 h-8 rounded-lg bg-background border border-white/10 text-[10px] font-bold uppercase px-2 text-white/60"
+                              value={editForm._newClassExpires || ''}
+                              onChange={(e) => setEditForm({...editForm, _newClassExpires: e.target.value})}
+                              className="h-8 rounded-lg bg-background border border-white/10 text-[10px] font-bold uppercase px-2 text-white/60"
                             />
                             <button
                               onClick={() => {
-                                const updated = { ...editForm.classEntitlements };
-                                delete updated[cls];
-                                setEditForm({...editForm, classEntitlements: updated});
+                                const cls = editForm._newClass;
+                                const exp = editForm._newClassExpires;
+                                if (!cls || !exp) return;
+                                const updated = { ...(editForm.classEntitlements || {}) };
+                                updated[cls] = { expires: exp, updatedAt: new Date().toISOString() };
+                                setEditForm({...editForm, classEntitlements: updated, _newClass: '', _newClassExpires: ''});
                               }}
-                              className="p-1.5 rounded bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white transition-all"
-                              title="Remove class"
+                              className="p-1.5 rounded bg-primary/10 text-primary hover:bg-primary hover:text-white transition-all"
+                              title="Add class"
                             >
-                              <Trash2 className="w-3 h-3" />
+                              <Plus className="w-3 h-3" />
                             </button>
                           </div>
-                        ))}
-                        {/* Add Class */}
-                        <div className="flex items-center gap-2 pt-1">
-                          <select
-                            value={editForm._newClass || ''}
-                            onChange={(e) => setEditForm({...editForm, _newClass: e.target.value})}
-                            className="flex-1 h-8 rounded-lg bg-background border border-white/10 text-[10px] font-bold uppercase px-2 text-white/60"
-                          >
-                            <option value="">Select Class</option>
-                            {[
-                              'deathknight', 'demonhunter', 'druid', 'evoker', 'hunter',
-                              'mage', 'monk', 'paladin', 'priest', 'rogue',
-                              'shaman', 'warlock', 'warrior'
-                            ].filter(c => !editForm.classEntitlements?.[c]).map(c => (
-                              <option key={c} value={c}>{formatClassName(c)}</option>
-                            ))}
-                          </select>
-                          <input
-                            type="date"
-                            value={editForm._newClassExpires || ''}
-                            onChange={(e) => setEditForm({...editForm, _newClassExpires: e.target.value})}
-                            className="h-8 rounded-lg bg-background border border-white/10 text-[10px] font-bold uppercase px-2 text-white/60"
-                          />
-                          <button
-                            onClick={() => {
-                              const cls = editForm._newClass;
-                              const exp = editForm._newClassExpires;
-                              if (!cls || !exp) return;
-                              const updated = { ...(editForm.classEntitlements || {}) };
-                              updated[cls] = { expires: exp, updatedAt: new Date().toISOString() };
-                              setEditForm({...editForm, classEntitlements: updated, _newClass: '', _newClassExpires: ''});
-                            }}
-                            className="p-1.5 rounded bg-primary/10 text-primary hover:bg-primary hover:text-white transition-all"
-                            title="Add class"
-                          >
-                            <Plus className="w-3 h-3" />
-                          </button>
                         </div>
-                      </div>
+                      )}
                     </div>
                   ) : (
                     <div className="flex flex-col gap-1.5">
@@ -414,8 +416,12 @@ export function AdminPanel({ onViewUser }: AdminPanelProps) {
                         })()}
                       </div>
 
-                      {/* Class Entitlements */}
-                      {user?.classEntitlements && Object.keys(user.classEntitlements).length > 0 && (
+                      {/* Class Entitlements — hidden when AIO active */}
+                      {(() => {
+                        const d = user?.aioExpires?.toDate ? user.aioExpires.toDate() : new Date(user?.aioExpires);
+                        const aioActive = !isNaN(d.getTime()) && d > new Date();
+                        return !aioActive && user?.classEntitlements && Object.keys(user.classEntitlements).length > 0;
+                      })() && (
                         <div className="flex flex-col gap-1">
                           {Object.entries(user.classEntitlements).map(([cls, ent]: [string, any]) => {
                             const d = ent?.expires?.toDate ? ent.expires.toDate() : new Date(ent?.expires);

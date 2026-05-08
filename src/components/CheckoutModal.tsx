@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, CreditCard, Zap, ChevronDown, CheckCircle2, Hexagon } from 'lucide-react';
 import { db } from '../lib/firebase';
-import { doc, setDoc, updateDoc, getDoc, serverTimestamp, collection, addDoc } from 'firebase/firestore';
+import { doc, setDoc, updateDoc, getDoc, serverTimestamp, collection, addDoc, deleteField } from 'firebase/firestore';
 
 interface CheckoutModalProps {
   isOpen: boolean;
@@ -57,10 +57,12 @@ export function CheckoutModal({ isOpen, onClose, user, userData, cart, total, is
       }
 
       if (plan === 'aio' || plan === 'trial') {
-        // AIO / Trial: set aioExpires, preserve existing classEntitlements
+        // AIO fully replaces single-class entitlements
         updateData.aioExpires = expirationDate;
         updateData.isAio = true;
-        console.log(`[CheckoutModal] Setting aioExpires=${expirationDate.toISOString()}`);
+        updateData.classEntitlements = deleteField();
+        updateData.selectedClass = deleteField();
+        console.log(`[CheckoutModal] Setting aioExpires=${expirationDate.toISOString()}, cleared classEntitlements`);
       } else if (plan === 'single' && className) {
         // Single class: merge into classEntitlements without overwriting other classes
         updateData.isAio = false;

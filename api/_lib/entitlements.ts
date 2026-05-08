@@ -90,7 +90,8 @@ export function buildLicensePayload(
     if (aioDate) payload.aioExpires = aioDate.toISOString();
   }
 
-  if (Object.keys(normalized.classEntitlements).length > 0) {
+  // Only include classEntitlements when AIO is NOT active
+  if (!isAioActive(normalized) && Object.keys(normalized.classEntitlements).length > 0) {
     payload.classEntitlements = {};
     for (const [cls, ent] of Object.entries(normalized.classEntitlements)) {
       const d = timestampToDate(ent.expires);

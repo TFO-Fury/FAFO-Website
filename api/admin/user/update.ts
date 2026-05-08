@@ -33,6 +33,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       updatePayload.selectedClass = FieldValue.delete();
     }
 
+    // AIO fully replaces single-class entitlements
+    if (updates.aioExpires !== undefined) {
+      updatePayload.classEntitlements = FieldValue.delete();
+    }
+
     await userRef.update(updatePayload);
     console.log(`[AdminUpdate] User ${userId} updated by ${caller.uid}`, updates);
 

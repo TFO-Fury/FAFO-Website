@@ -51,11 +51,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (planType === 'aio' || planType === 'trial') {
       updatePayload.isAio = true;
       updatePayload.aioExpires = expirationTimestamp;
-      // Preserve existing class entitlements
-      if (Object.keys(normalized.classEntitlements).length > 0) {
-        updatePayload.classEntitlements = normalized.classEntitlements;
-      }
-      console.log(`[DevCheckout] Granting AIO/Trial to ${userId}, aioExpires=${expirationDate.toISOString()}`);
+      // AIO fully replaces single-class entitlements
+      updatePayload.classEntitlements = FieldValue.delete();
+      console.log(`[DevCheckout] Granting AIO/Trial to ${userId}, aioExpires=${expirationDate.toISOString()}, cleared classEntitlements`);
     } else if (planType === 'single' && className) {
       updatePayload.isAio = false;
       updatePayload.classEntitlements = {

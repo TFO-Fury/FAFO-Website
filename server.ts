@@ -317,10 +317,11 @@ async function startServer() {
           isAio: true,
           aioExpires: expirationTimestamp,
           updatedAt: FieldValue.serverTimestamp(),
-          classEntitlements: normalized.classEntitlements,
-          ...(normalized.migrated ? { selectedClass: FieldValue.delete() } : {})
+          // AIO fully replaces single-class entitlements
+          classEntitlements: FieldValue.delete(),
+          ...(normalized.migrated || existingUserData?.selectedClass ? { selectedClass: FieldValue.delete() } : {})
         }, { merge: true });
-        console.log(`[API] AIO/Trial activation: setting aioExpires=${expirationDate.toISOString()}, preserving ${Object.keys(normalized.classEntitlements).length} class entitlements`);
+        console.log(`[API] AIO/Trial activation: setting aioExpires=${expirationDate.toISOString()}, cleared classEntitlements`);
       } else if (plan === 'single' && reqClassName) {
         const classEntitlements = {
           ...normalized.classEntitlements,

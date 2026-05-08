@@ -424,8 +424,12 @@ export function Dashboard({ onUpgrade, targetUserId }: DashboardProps) {
                   );
                 })()}
 
-                {/* Class Entitlements */}
-                {userData?.classEntitlements && Object.keys(userData.classEntitlements).length > 0 && (
+                {/* Class Entitlements — hidden when AIO active */}
+                {(() => {
+                  const aioDate = userData?.aioExpires?.toDate ? userData.aioExpires.toDate() : new Date(userData?.aioExpires);
+                  const aioActive = !isNaN(aioDate.getTime()) && aioDate > new Date();
+                  return !aioActive && userData?.classEntitlements && Object.keys(userData.classEntitlements).length > 0;
+                })() && (
                   <div className="space-y-2 pt-2 border-t border-white/5">
                     <span className="text-[10px] font-black text-white/25 uppercase tracking-widest block">Class Entitlements</span>
                     {Object.entries(userData.classEntitlements).map(([cls, ent]: [string, any]) => {
