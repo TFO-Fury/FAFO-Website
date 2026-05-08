@@ -276,9 +276,8 @@ export function AdminPanel({ onViewUser }: AdminPanelProps) {
             <option value="expired">Expired</option>
           </select>
         </div>
-      </div>
 
-      <motion.div 
+      <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         className="overflow-x-auto rounded-[32px] border border-white/5 bg-surface-dark shadow-2xl overflow-hidden"
