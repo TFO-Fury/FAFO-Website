@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { db, handleFirestoreError, OperationType } from '../lib/firebase';
+import { db, auth, handleFirestoreError, OperationType } from '../lib/firebase';
 import { collection, onSnapshot, doc, updateDoc, deleteDoc, query, orderBy, limit } from 'firebase/firestore';
 import { 
   Search, 
@@ -71,6 +71,39 @@ export function AdminPanel({ onViewUser }: AdminPanelProps) {
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `users/${userId}`);
       alert("Failed to update user.");
+    }
+  };
+
+  // ─── DEV TEST: fake checkout entitlement grant ───
+  const handleDevCheckout = async (targetUser: any, planType: 'trial' | 'single' | 'aio') => {
+    try {
+      const currentUser = auth.currentUser;
+      if (!currentUser) throw new Error('Not authenticated');
+      const token = await currentUser.getIdToken(true);
+
+      const res = await fetch('/api/dev/fake-checkout', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          userId: targetUser.id,
+          email: targetUser.email,
+          planType
+        })
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || `HTTP ${res.status}`);
+      }
+
+      console.log(`[DevCheckout] ${planType} granted to ${targetUser.email}:`, data);
+      alert(`DEV: Granted ${planType.toUpperCase()} to ${targetUser.email}\nExpires: ${new Date(data.expirationDate).toLocaleDateString()}\nDiscord: ${data.discordSyncResult?.success ? 'OK' : data.discordSyncResult?.error || 'N/A'}`);
+    } catch (err: any) {
+      console.error('[DevCheckout] Frontend error:', err);
+      alert(`DEV Checkout Error: ${err.message}`);
     }
   };
 
@@ -306,11 +339,11 @@ export function AdminPanel({ onViewUser }: AdminPanelProps) {
                           <Zap className="w-3.5 h-3.5" />
                           Adjust
                         </button>
-                        <button 
+                        <button
                           onClick={() => {
                             setEditingUser(user.id);
-                            setEditForm({ 
-                              plan: user.plan, 
+                            setEditForm({
+                              plan: user.plan,
                               accountStatus: user.accountStatus,
                               role: user.role || 'user'
                             });
@@ -319,6 +352,31 @@ export function AdminPanel({ onViewUser }: AdminPanelProps) {
                         >
                           <Edit3 className="w-4 h-4" />
                         </button>
+                        {/* ─── DEV TEST CONTROLS ─── */}
+                        <div className="flex items-center gap-1 ml-2 pl-2 border-l border-orange-500/20 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <span className="text-[8px] font-black uppercase text-orange-500 tracking-widest mr-1">DEV</span>
+                          <button
+                            onClick={() => handleDevCheckout(user, 'trial')}
+                            className="px-2 py-1 rounded bg-purple-500/10 border border-purple-500/20 text-[9px] font-black uppercase text-purple-500 tracking-widest hover:bg-purple-500 hover:text-white transition-all"
+                            title="Grant Trial"
+                          >
+                            Trial
+                          </button>
+                          <button
+                            onClick={() => handleDevCheckout(user, 'single')}
+                            className="px-2 py-1 rounded bg-blue-500/10 border border-blue-500/20 text-[9px] font-black uppercase text-blue-500 tracking-widest hover:bg-blue-500 hover:text-white transition-all"
+                            title="Grant Single"
+                          >
+                            Single
+                          </button>
+                          <button
+                            onClick={() => handleDevCheckout(user, 'aio')}
+                            className="px-2 py-1 rounded bg-orange-500/10 border border-orange-500/20 text-[9px] font-black uppercase text-orange-500 tracking-widest hover:bg-orange-500 hover:text-white transition-all"
+                            title="Grant AIO"
+                          >
+                            AIO
+                          </button>
+                        </div>
                       </div>
                     )}
                   </div>
