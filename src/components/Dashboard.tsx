@@ -130,22 +130,35 @@ export function Dashboard({ onUpgrade, targetUserId }: DashboardProps) {
     if (!currentUid || !isAdminViewing) return;
     setIsSaving(true);
     try {
-      const userRef = doc(db, 'users', currentUid);
+      const currentUser = auth.currentUser;
+      if (!currentUser) throw new Error('Not authenticated');
+      const token = await currentUser.getIdToken(true);
+
       const updates: any = {
         discordId: adminDiscordId,
         plan: adminPlan,
         accountStatus: adminStatus,
-        updatedAt: new Date()
       };
-      
+
       if (adminExpiresAt) {
         updates.expiresAt = new Date(adminExpiresAt);
       }
 
-      await updateDoc(userRef, updates);
+      const res = await fetch('/api/admin/user/update', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ userId: currentUid, updates })
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+
       alert("User updated successfully.");
-    } catch (err) {
-      alert("Failed to update user.");
+    } catch (err: any) {
+      alert(`Failed to update user: ${err.message}`);
     } finally {
       setIsSaving(false);
     }

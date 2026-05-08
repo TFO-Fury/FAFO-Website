@@ -62,15 +62,27 @@ export function AdminPanel({ onViewUser }: AdminPanelProps) {
 
   const handleUpdateUser = async (userId: string) => {
     try {
-      const userRef = doc(db, 'users', userId);
-      await updateDoc(userRef, {
-        ...editForm,
-        updatedAt: new Date()
+      const currentUser = auth.currentUser;
+      if (!currentUser) throw new Error('Not authenticated');
+      const token = await currentUser.getIdToken(true);
+
+      const res = await fetch('/api/admin/user/update', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ userId, updates: editForm })
       });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+
       setEditingUser(null);
-    } catch (err) {
+      alert("User updated successfully.");
+    } catch (err: any) {
       handleFirestoreError(err, OperationType.UPDATE, `users/${userId}`);
-      alert("Failed to update user.");
+      alert(`Failed to update user: ${err.message}`);
     }
   };
 

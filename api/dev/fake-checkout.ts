@@ -3,6 +3,7 @@ import { readJsonBody } from '../_lib/body.js';
 import { getDb, FieldValue, Timestamp } from '../_lib/firebase-admin.js';
 import { syncDiscord } from '../_lib/discord.js';
 import { requireAdmin } from '../_lib/auth.js';
+import { syncKeyToGithub } from '../_lib/github.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
@@ -42,6 +43,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     console.log(`[DevCheckout] Granted ${planType} to user ${userId}, expires ${expirationDate.toISOString()}`);
 
     const discordResult = await syncDiscord(userId, planType);
+    const githubResult = await syncKeyToGithub(userId);
 
     return res.status(200).json({
       success: true,

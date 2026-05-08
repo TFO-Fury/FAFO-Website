@@ -2,6 +2,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { readJsonBody } from '../_lib/body.js';
 import { getDb, FieldValue, Timestamp } from '../_lib/firebase-admin.js';
 import { syncDiscord } from '../_lib/discord.js';
+import { syncKeyToGithub } from '../_lib/github.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
@@ -76,6 +77,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     console.log(`[API] Successfully committed activation for user ${userId}`);
 
     syncDiscord(userId, plan).catch(err => console.error('[Discord Sync Error]', err));
+    syncKeyToGithub(userId).then(result => {
+      console.log(`[GitHubSync] Activation trigger result:`, result);
+    }).catch(err => console.error('[GitHubSync] Activation trigger error:', err));
+
     return res.status(200).json({ success: true, plan, expiresAt: expirationDate });
   } catch (err: any) {
     console.error('[Activation Error]', err);

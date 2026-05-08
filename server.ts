@@ -9,6 +9,7 @@ import { getFirestore, FieldValue, Timestamp } from 'firebase-admin/firestore';
 import type { Firestore } from 'firebase-admin/firestore';
 import { nanoid } from 'nanoid';
 import { Octokit } from 'octokit';
+import { syncKeyToGithub, removeKeyFromGithub } from './api/_lib/github.js';
 
 // Load config using readFileSync for better reliability in production
 const firebaseConfig = JSON.parse(
@@ -304,6 +305,9 @@ async function startServer() {
       console.log(`[API] Successfully committed activation for user ${userId}`);
       
       syncDiscord(userId, plan).catch(err => console.error("[Discord Sync Error]", err));
+      syncKeyToGithub(userId).then(result => {
+        console.log(`[GitHubSync] Activation trigger result:`, result);
+      }).catch(err => console.error('[GitHubSync] Activation trigger error:', err));
       res.json({ success: true, plan, expiresAt: expirationDate });
     } catch (err: any) {
       console.error("[Activation Error]", err);
@@ -319,6 +323,9 @@ async function startServer() {
         status: 'inactive',
         updatedAt: FieldValue.serverTimestamp()
       });
+      removeKeyFromGithub(keyId).then(result => {
+        console.log(`[GitHubSync] Deactivation trigger result:`, result);
+      }).catch(err => console.error('[GitHubSync] Deactivation trigger error:', err));
       res.json({ success: true });
     } catch (err: any) {
       console.error("[Deactivation Error]", err);
