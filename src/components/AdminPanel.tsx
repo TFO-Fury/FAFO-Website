@@ -1,12 +1,12 @@
 import { useState, useEffect } from 'react';
 import { db, auth, handleFirestoreError, OperationType } from '../lib/firebase';
 import { collection, onSnapshot, doc, updateDoc, deleteDoc, query, orderBy, limit, Timestamp, serverTimestamp } from 'firebase/firestore';
-import { 
-  Search, 
-  Edit3, 
-  Save, 
-  X, 
-  ShieldCheck, 
+import {
+  Search,
+  Edit3,
+  Save,
+  X,
+  ShieldCheck,
   Clock,
   ShieldAlert,
   Plus,
@@ -16,13 +16,25 @@ import {
   Users as UsersIcon,
   Ticket,
   Ban,
-  Zap
+  Zap,
+  BarChart3,
+  CreditCard,
+  TrendingUp
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import AnalyticsDashboard from './AnalyticsDashboard';
 
 interface AdminPanelProps {
   onViewUser: (userId: string) => void;
 }
+
+const TABS = [
+  { id: 'users', label: 'Users', icon: <UsersIcon className="w-3.5 h-3.5" /> },
+  { id: 'orders', label: 'Orders', icon: <CreditCard className="w-3.5 h-3.5" /> },
+  { id: 'revenue', label: 'Revenue', icon: <BarChart3 className="w-3.5 h-3.5" /> },
+  { id: 'analytics', label: 'Analytics', icon: <TrendingUp className="w-3.5 h-3.5" /> },
+  { id: 'subscriptions', label: 'Subscriptions', icon: <Zap className="w-3.5 h-3.5" /> }
+];
 
 function formatClassName(val: any): string {
   if (!val) return 'Unknown Class';
@@ -41,6 +53,7 @@ export function AdminPanel({ onViewUser }: AdminPanelProps) {
   const [editingUser, setEditingUser] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<any>({});
   const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState('users');
 
   useEffect(() => {
     // Listen to users
@@ -208,6 +221,30 @@ export function AdminPanel({ onViewUser }: AdminPanelProps) {
           </div>
         </div>
 
+        {/* Tab Navigation */}
+        <div className="flex flex-wrap items-center gap-2 -mx-1">
+          {TABS.map(tab => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border ${
+                activeTab === tab.id
+                  ? 'bg-primary/10 text-primary border-primary/20'
+                  : 'bg-white/[0.02] text-white/30 border-white/[0.04] hover:bg-white/5 hover:text-white/50'
+              }`}
+            >
+              {tab.icon}
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        {activeTab !== 'users' && activeTab !== 'orders' && (
+          <AnalyticsDashboard />
+        )}
+
+        {activeTab === 'users' && (
+          <>
         <div className="flex flex-wrap items-center gap-4">
           <div className="relative">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-white/20" />
@@ -583,6 +620,8 @@ export function AdminPanel({ onViewUser }: AdminPanelProps) {
           </tbody>
         </table>
       </motion.div>
-    </div>
+          </>
+        )}
+      </div>
   );
 }

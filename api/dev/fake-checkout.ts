@@ -72,6 +72,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     await firestore.collection('users').doc(userId).set(updatePayload, { merge: true });
 
+    // Create order entry (excluded from revenue)
+    await firestore.collection('orders').add({
+      userId,
+      email: email || null,
+      plan: planType,
+      className: className || null,
+      amount: 0,
+      currency: 'USD',
+      source: 'admin-dev',
+      paymentProvider: null,
+      paymentStatus: 'completed',
+      transactionId: null,
+      subscriptionId: null,
+      excludedFromRevenue: true,
+      createdAt: FieldValue.serverTimestamp()
+    });
+    console.log(`[DevCheckout] Order entry created for ${userId}, excludedFromRevenue=true`);
+
     const discordResult = await syncDiscord(userId, planType);
     const githubResult = await triggerLicenseSync(userId, 'fake-checkout');
 

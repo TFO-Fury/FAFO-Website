@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, CreditCard, Zap, ChevronDown, CheckCircle2, Hexagon } from 'lucide-react';
+import { X, CreditCard, Zap, ChevronDown, CheckCircle2, Hexagon, FlaskConical } from 'lucide-react';
 import { db } from '../lib/firebase';
 import { doc, setDoc, updateDoc, getDoc, serverTimestamp, collection, addDoc, deleteField } from 'firebase/firestore';
+import PayPalCheckout from './PayPalCheckout';
 
 interface CheckoutModalProps {
   isOpen: boolean;
@@ -244,39 +245,91 @@ export function CheckoutModal({ isOpen, onClose, user, userData, cart, total, is
                   </div>
 
                   <div className="space-y-4">
-                    <button 
-                      disabled={loading}
-                      onClick={() => handlePayment('Stripe')}
-                      className="w-full p-6 rounded-2xl border border-white/5 bg-white/5 hover:bg-white/10 hover:border-primary/50 transition-all flex items-center justify-between group disabled:opacity-50"
-                    >
-                      <div className="flex items-center gap-4 text-left">
-                        <div className="w-12 h-12 rounded-xl bg-white/5 flex items-center justify-center text-white/40 group-hover:text-[#635BFF]">
-                          {loading ? <div className="w-5 h-5 border-2 border-primary border-t-transparent animate-spin rounded-full" /> : <CreditCard />}
-                        </div>
-                        <div>
-                          <p className="font-bold text-white uppercase tracking-widest text-sm">Pay with Card</p>
-                          <p className="text-[10px] text-white/20 font-bold uppercase tracking-widest">Stripe Secure</p>
-                        </div>
+                    {/* Normal users: real PayPal checkout only */}
+                    {userData?.role !== 'admin' && userData?.role !== 'owner' ? (
+                      <div className="space-y-4">
+                        {(() => {
+                          const singleClassItem = cart.find(i => i.type === 'one-class');
+                          const plan = cart.some(i => i.type === 'trial')
+                            ? 'trial'
+                            : cart.some(i => i.type === 'aio')
+                              ? 'aio'
+                              : 'single';
+                          return (
+                            <PayPalCheckout
+                              plan={plan}
+                              className={singleClassItem?.wowClass || undefined}
+                              amount={String(total)}
+                              userId={user?.uid}
+                              onSuccess={(result) => {
+                                console.log('[CheckoutModal] PayPal success:', result);
+                                setStep('success');
+                                onSuccess();
+                              }}
+                              onError={(err) => {
+                                console.error('[CheckoutModal] PayPal error:', err);
+                                alert('Payment failed. Please try again.');
+                              }}
+                            />
+                          );
+                        })()}
                       </div>
-                      <ChevronDown className="w-5 h-5 -rotate-90 text-white/10 group-hover:text-primary transition-colors" />
-                    </button>
+                    ) : (
+                      <>
+                        {/* Admin/Owner: real PayPal + DEV TEST options */}
+                        <div className="space-y-4">
+                          {(() => {
+                            const singleClassItem = cart.find(i => i.type === 'one-class');
+                            const plan = cart.some(i => i.type === 'trial')
+                              ? 'trial'
+                              : cart.some(i => i.type === 'aio')
+                                ? 'aio'
+                                : 'single';
+                            return (
+                              <PayPalCheckout
+                                plan={plan}
+                                className={singleClassItem?.wowClass || undefined}
+                                amount={String(total)}
+                                userId={user?.uid}
+                                onSuccess={(result) => {
+                                  console.log('[CheckoutModal] PayPal success:', result);
+                                  setStep('success');
+                                  onSuccess();
+                                }}
+                                onError={(err) => {
+                                  console.error('[CheckoutModal] PayPal error:', err);
+                                  alert('Payment failed. Please try again.');
+                                }}
+                              />
+                            );
+                          })()}
+                        </div>
 
-                    <button 
-                      disabled={loading}
-                      onClick={() => handlePayment('PayPal')}
-                      className="w-full p-6 rounded-2xl border border-white/5 bg-white/5 hover:bg-white/10 hover:border-primary/50 transition-all flex items-center justify-between group disabled:opacity-50"
-                    >
-                      <div className="flex items-center gap-4 text-left">
-                        <div className="w-12 h-12 rounded-xl bg-white/5 flex items-center justify-center text-white/40 group-hover:text-[#003087]">
-                          {loading ? <div className="w-5 h-5 border-2 border-primary border-t-transparent animate-spin rounded-full" /> : <Zap />}
+                        <div className="relative flex items-center justify-center">
+                          <div className="absolute inset-0 border-t border-white/5" />
+                          <span className="relative px-3 text-[10px] font-black uppercase tracking-widest text-white/20 bg-[#1a1d23]">
+                            Dev Tools
+                          </span>
                         </div>
-                        <div>
-                          <p className="font-bold text-white uppercase tracking-widest text-sm">PayPal</p>
-                          <p className="text-[10px] text-white/20 font-bold uppercase tracking-widest">Instant Pay</p>
-                        </div>
-                      </div>
-                      <ChevronDown className="w-5 h-5 -rotate-90 text-white/10 group-hover:text-primary transition-colors" />
-                    </button>
+
+                        <button
+                          disabled={loading}
+                          onClick={() => handlePayment('DevTest')}
+                          className="w-full p-6 rounded-2xl border border-yellow-500/10 bg-yellow-500/5 hover:bg-yellow-500/10 hover:border-yellow-500/30 transition-all flex items-center justify-between group disabled:opacity-50"
+                        >
+                          <div className="flex items-center gap-4 text-left">
+                            <div className="w-12 h-12 rounded-xl bg-yellow-500/10 flex items-center justify-center text-yellow-500/60 group-hover:text-yellow-500">
+                              {loading ? <div className="w-5 h-5 border-2 border-yellow-500 border-t-transparent animate-spin rounded-full" /> : <FlaskConical />}
+                            </div>
+                            <div>
+                              <p className="font-bold text-white uppercase tracking-widest text-sm">Dev Grant</p>
+                              <p className="text-[10px] text-yellow-500/40 font-bold uppercase tracking-widest">Skip Payment · Admin Only</p>
+                            </div>
+                          </div>
+                          <ChevronDown className="w-5 h-5 -rotate-90 text-white/10 group-hover:text-yellow-500 transition-colors" />
+                        </button>
+                      </>
+                    )}
                   </div>
                 </div>
               ) : (
