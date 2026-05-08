@@ -207,7 +207,8 @@ export function Dashboard({ onUpgrade, targetUserId }: DashboardProps) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           key: activationCode.trim().toUpperCase(),
-          userId: currentUid
+          userId: currentUid,
+          selectedClass: userData?.selectedClass || undefined
         })
       });
 

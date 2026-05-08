@@ -15,7 +15,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!caller) return;
 
   const body = await readJsonBody(req);
-  const { userId, email, planType } = body || {};
+  const { userId, email, planType, selectedClass: reqSelectedClass } = body || {};
 
   if (!userId || !planType) {
     return res.status(400).json({ error: 'userId and planType are required' });
@@ -31,14 +31,28 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const expirationDate = new Date();
     expirationDate.setDate(expirationDate.getDate() + days);
 
-    await firestore.collection('users').doc(userId).set({
+    const userDoc = await firestore.collection('users').doc(userId).get();
+    const existingData = userDoc.exists ? userDoc.data() : null;
+
+    let selectedClass = reqSelectedClass;
+    if (!selectedClass && existingData?.selectedClass) {
+      selectedClass = existingData.selectedClass;
+    }
+    if (planType === 'aio') {
+      selectedClass = 'all';
+    }
+
+    const updatePayload: any = {
       email: email || null,
       plan: planType,
       accountStatus: 'active',
       isAio: planType === 'aio',
       expiresAt: Timestamp.fromDate(expirationDate),
       updatedAt: FieldValue.serverTimestamp()
-    }, { merge: true });
+    };
+    if (selectedClass) updatePayload.selectedClass = selectedClass;
+
+    await firestore.collection('users').doc(userId).set(updatePayload, { merge: true });
 
     console.log(`[DevCheckout] Granted ${planType} to user ${userId}, expires ${expirationDate.toISOString()}`);
 

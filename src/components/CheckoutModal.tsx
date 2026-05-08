@@ -33,13 +33,15 @@ export function CheckoutModal({ isOpen, onClose, user, userData, cart, total, is
       
       const hasTrial = cart.some(i => i.type === 'trial');
       const plan = hasTrial ? 'trial' : (cart.some(i => i.type === 'aio') ? 'aio' : 'single');
-      
+      const singleClassItem = cart.find(i => i.type === 'one-class');
+      const selectedClass = plan === 'aio' ? 'all' : (singleClassItem?.wowClass || null);
+
       const expirationDate = new Date();
       // Trial: 3 days, Others: 30 days
       const daysToAdd = plan === 'trial' ? 3 : 30;
       expirationDate.setDate(expirationDate.getDate() + daysToAdd);
-      
-      console.log(`[CheckoutModal] User: ${user.uid}, Plan: ${plan}, Days: ${daysToAdd}, Expires: ${expirationDate}`);
+
+      console.log(`[CheckoutModal] User: ${user.uid}, Plan: ${plan}, Days: ${daysToAdd}, Expires: ${expirationDate}, Class: ${selectedClass}`);
 
       // 1. Update Profile
       console.log("[CheckoutModal] Updating Firestore profile...");
@@ -50,11 +52,14 @@ export function CheckoutModal({ isOpen, onClose, user, userData, cart, total, is
         expiresAt: expirationDate,
         updatedAt: serverTimestamp()
       };
-      
+
       if (hasTrial) {
         updateData.trialUsed = true;
       }
-      
+      if (selectedClass) {
+        updateData.selectedClass = selectedClass;
+      }
+
       await setDoc(userRef, updateData, { merge: true });
       console.log("[CheckoutModal] Profile update SUCCESS");
 

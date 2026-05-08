@@ -238,9 +238,9 @@ async function startServer() {
   });
 
   apiRouter.post("/keys/activate", async (req, res) => {
-    const { key, userId, plan = 'aio' } = req.body;
+    const { key, userId, plan = 'aio', selectedClass: reqSelectedClass } = req.body;
     console.log(`[API] Activate Key Request: ${key} for user ${userId} (Plan: ${plan})`);
-    
+
     if (!key || !userId) {
       console.warn("[API] Missing key or userId in activation request");
       return res.status(400).json({ error: "Key and userId required" });
@@ -257,12 +257,28 @@ async function startServer() {
 
       console.log(`[API] Processing key ${key}. Exists: ${keySnap.exists}. Expiration: ${expirationDate.toISOString()}`);
 
+      // Preserve existing selectedClass on renewal unless explicitly provided
+      const userDoc = await firestore.collection('users').doc(userId).get();
+      const existingUserData = userDoc.exists ? userDoc.data() : null;
+
+      let selectedClass = reqSelectedClass;
+      if (!selectedClass && keySnap.exists) {
+        const keyData = keySnap.data();
+        selectedClass = keyData?.selectedClass;
+      }
+      if (!selectedClass && existingUserData?.selectedClass) {
+        selectedClass = existingUserData.selectedClass;
+      }
+      if (plan === 'aio') {
+        selectedClass = 'all';
+      }
+
       const batch = firestore.batch();
 
       if (keySnap.exists) {
         const keyData = keySnap.data();
         console.log(`[API] Existing key data:`, keyData);
-        
+
         if (keyData?.userId && keyData.userId !== userId) {
           console.warn(`[API] Key ${key} owned by ${keyData.userId}, but user ${userId} tried to activate it`);
           return res.status(400).json({ error: "Key already used by another user" });
@@ -271,12 +287,13 @@ async function startServer() {
           console.warn(`[API] Deactivated key ${key} attempted by user ${userId}`);
           return res.status(400).json({ error: "This key has been deactivated by an admin" });
         }
-        
+
         batch.update(keyRef, {
           userId,
           status: 'active',
           lastUsedAt: FieldValue.serverTimestamp(),
-          updatedAt: FieldValue.serverTimestamp()
+          updatedAt: FieldValue.serverTimestamp(),
+          ...(selectedClass ? { selectedClass } : {})
         });
       } else {
         console.log(`[API] Creating new key record for ${key}`);
@@ -288,7 +305,8 @@ async function startServer() {
           createdAt: FieldValue.serverTimestamp(),
           lastUsedAt: FieldValue.serverTimestamp(),
           updatedAt: FieldValue.serverTimestamp(),
-          expiresAt: Timestamp.fromDate(expirationDate)
+          expiresAt: Timestamp.fromDate(expirationDate),
+          ...(selectedClass ? { selectedClass } : {})
         });
       }
 
@@ -298,7 +316,8 @@ async function startServer() {
         accountStatus: 'active',
         isAio: plan === 'aio',
         expiresAt: Timestamp.fromDate(expirationDate),
-        updatedAt: FieldValue.serverTimestamp()
+        updatedAt: FieldValue.serverTimestamp(),
+        ...(selectedClass ? { selectedClass } : {})
       }, { merge: true });
 
       await batch.commit();

@@ -23,10 +23,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const firestore = await getDb();
     const userRef = firestore.collection('users').doc(userId);
 
-    const updatePayload = {
+    const updatePayload: any = {
       ...updates,
       updatedAt: FieldValue.serverTimestamp()
     };
+
+    if (updates.plan === 'aio') {
+      updatePayload.selectedClass = 'all';
+    }
 
     await userRef.update(updatePayload);
     console.log(`[AdminUpdate] User ${userId} updated by ${caller.uid}`, updates);

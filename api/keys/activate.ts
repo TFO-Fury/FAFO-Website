@@ -10,7 +10,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   const body = await readJsonBody(req);
-  const { key, userId, plan = 'aio' } = body || {};
+  const { key, userId, plan = 'aio', selectedClass: reqSelectedClass } = body || {};
   console.log(`[API] Activate Key Request: ${key} for user ${userId} (Plan: ${plan})`);
 
   if (!key || !userId) {
@@ -28,6 +28,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     expirationDate.setDate(expirationDate.getDate() + days);
 
     console.log(`[API] Processing key ${key}. Exists: ${keySnap.exists}. Expiration: ${expirationDate.toISOString()}`);
+
+    // Preserve existing selectedClass on renewal unless explicitly provided
+    const userDoc = await firestore.collection('users').doc(userId).get();
+    const existingUserData = userDoc.exists ? userDoc.data() : null;
+
+    let selectedClass = reqSelectedClass;
+    if (!selectedClass && keySnap.exists) {
+      const keyData = keySnap.data();
+      selectedClass = keyData?.selectedClass;
+    }
+    if (!selectedClass && existingUserData?.selectedClass) {
+      selectedClass = existingUserData.selectedClass;
+    }
+    if (plan === 'aio') {
+      selectedClass = 'all';
+    }
 
     const batch = firestore.batch();
 
@@ -48,7 +64,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         userId,
         status: 'active',
         lastUsedAt: FieldValue.serverTimestamp(),
-        updatedAt: FieldValue.serverTimestamp()
+        updatedAt: FieldValue.serverTimestamp(),
+        ...(selectedClass ? { selectedClass } : {})
       });
     } else {
       console.log(`[API] Creating new key record for ${key}`);
@@ -60,7 +77,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         createdAt: FieldValue.serverTimestamp(),
         lastUsedAt: FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp(),
-        expiresAt: Timestamp.fromDate(expirationDate)
+        expiresAt: Timestamp.fromDate(expirationDate),
+        ...(selectedClass ? { selectedClass } : {})
       });
     }
 
@@ -70,7 +88,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       accountStatus: 'active',
       isAio: plan === 'aio',
       expiresAt: Timestamp.fromDate(expirationDate),
-      updatedAt: FieldValue.serverTimestamp()
+      updatedAt: FieldValue.serverTimestamp(),
+      ...(selectedClass ? { selectedClass } : {})
     }, { merge: true });
 
     await batch.commit();

@@ -46,10 +46,12 @@ export async function syncKeyToGithub(userId: string): Promise<{ success: boolea
     }
 
     const plan = userData.plan || 'none';
+    const selectedClass = plan === 'aio' ? 'all' : (userData.selectedClass || null);
     const filePath = `licenses/${key}.json`;
     const content = JSON.stringify({
       key,
       plan,
+      selectedClass,
       expires: new Date(expiresAt).toISOString(),
       updatedAt: new Date().toISOString()
     }, null, 2);
@@ -83,6 +85,9 @@ export async function syncKeyToGithub(userId: string): Promise<{ success: boolea
     });
 
     console.log(`[GitHubSync] Success - ${sha ? 'Updated' : 'Created'} ${filePath} (commit: ${result.data.commit.sha})`);
+    if (selectedClass) {
+      console.log(`[License] Selected class synced: ${selectedClass}`);
+    }
     return { success: true, path: filePath, sha: result.data.commit.sha };
   } catch (err: any) {
     console.error(`[GitHubSync] Failed for user ${userId}:`, err);
