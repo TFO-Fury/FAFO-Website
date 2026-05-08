@@ -259,12 +259,6 @@ export async function syncKeyToGithub(
 
     const action = sha ? 'Updated' : 'Created';
     console.log(`[GitHubSync] ${action} file: ${filePath}`);
-    const activeClasses = Object.entries(normalized.classEntitlements)
-      .filter(([, v]) => {
-        const d = v.expires?.toDate ? v.expires.toDate() : new Date(v.expires);
-        return !isNaN(d.getTime()) && d > new Date();
-      })
-      .map(([k]) => k);
     if (activeClasses.length > 0) {
       console.log(`[License] Active classes synced: ${activeClasses.join(', ')}`);
     }
