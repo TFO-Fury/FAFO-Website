@@ -7,8 +7,8 @@ const GITHUB_REPO = process.env.GITHUB_REPO;
 
 (function validateGithubConfig() {
   console.log('[GitHubSync] Startup validation:');
-  console.log(`  GITHUB_OWNER: ${GITHUB_OWNER ? 'set' : 'MISSING'}`);
-  console.log(`  GITHUB_REPO: ${GITHUB_REPO ? 'set' : 'MISSING'}`);
+  console.log(`  GITHUB_OWNER: ${GITHUB_OWNER ? `"${GITHUB_OWNER}"` : 'MISSING'}`);
+  console.log(`  GITHUB_REPO: ${GITHUB_REPO ? `"${GITHUB_REPO}"` : 'MISSING'}`);
   console.log(`  GITHUB_TOKEN: ${GITHUB_TOKEN ? `set (length=${GITHUB_TOKEN.length})` : 'MISSING'}`);
 })();
 
@@ -168,6 +168,38 @@ export async function syncKeyToGithub(
     const contentEncoded = Buffer.from(JSON.stringify(payload, null, 2)).toString('base64');
 
     console.log(`[GitHubSync] GitHub target: owner=${GITHUB_OWNER}, repo=${GITHUB_REPO}, path=${filePath}`);
+
+    // Verify authenticated identity
+    try {
+      const { data: userData } = await octokit.rest.users.getAuthenticated();
+      console.log(`[GitHubSync] Authenticated as: ${userData.login} (type=${userData.type}, id=${userData.id})`);
+    } catch (authErr: any) {
+      console.error(`[GitHubSync] Identity check FAILED. Status: ${authErr.status}, Message: ${authErr.message}`);
+      return {
+        success: false,
+        error: `GitHub authentication failed: ${authErr.message}`,
+        githubStatus: authErr.status,
+        githubResponse: authErr.response?.data || null
+      };
+    }
+
+    // Verify repository accessibility
+    try {
+      const { data: repoData } = await octokit.rest.repos.get({
+        owner: GITHUB_OWNER,
+        repo: GITHUB_REPO
+      });
+      console.log(`[GitHubSync] Repo accessible: ${repoData.full_name}, visibility=${repoData.visibility}, default_branch=${repoData.default_branch}, permissions=${JSON.stringify(repoData.permissions)}`);
+    } catch (repoErr: any) {
+      console.error(`[GitHubSync] Repo access FAILED for ${GITHUB_OWNER}/${GITHUB_REPO}. Status: ${repoErr.status}, Message: ${repoErr.message}, Response:`, repoErr.response?.data || '(no response data)');
+      return {
+        success: false,
+        error: `Repository ${GITHUB_OWNER}/${GITHUB_REPO} not accessible: ${repoErr.message}`,
+        githubStatus: repoErr.status,
+        githubResponse: repoErr.response?.data || null
+      };
+    }
+
     console.log(`[GitHubSync] Checking if file already exists...`);
 
     let sha: string | undefined;
