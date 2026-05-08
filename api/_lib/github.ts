@@ -2,8 +2,8 @@ import { Octokit } from 'octokit';
 import { getDb } from './firebase-admin.js';
 
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
-const GITHUB_OWNER = process.env.GITHUB_OWNER;
-const GITHUB_REPO = process.env.GITHUB_REPO;
+const GITHUB_OWNER = process.env.GITHUB_OWNER?.trim();
+const GITHUB_REPO = process.env.GITHUB_REPO?.trim();
 
 (function validateGithubConfig() {
   console.log('[GitHubSync] Startup validation:');
@@ -201,6 +201,7 @@ export async function syncKeyToGithub(
     }
 
     console.log(`[GitHubSync] Checking if file already exists...`);
+    console.log(`[GitHubSync] Raw path before getContent: ${filePath}`);
 
     let sha: string | undefined;
     let getStatus: number | undefined;
@@ -225,6 +226,7 @@ export async function syncKeyToGithub(
     }
 
     console.log(`[GitHubSync] Sending createOrUpdateFileContents...`);
+    console.log(`[GitHubSync] Raw path before createOrUpdateFileContents: ${filePath}`);
     let result;
     let writeStatus: number | undefined;
     try {
@@ -283,6 +285,7 @@ export async function removeKeyFromGithub(key: string): Promise<{ success: boole
   const octokit = new Octokit({ auth: GITHUB_TOKEN });
 
   try {
+    console.log(`[GitHubSync] Raw path before remove getContent: ${filePath}`);
     const { data: fileData } = await octokit.rest.repos.getContent({
       owner: GITHUB_OWNER,
       repo: GITHUB_REPO,
@@ -293,6 +296,7 @@ export async function removeKeyFromGithub(key: string): Promise<{ success: boole
       return { success: false, path: filePath, error: 'Path is a directory' };
     }
 
+    console.log(`[GitHubSync] Raw path before deleteFile: ${filePath}`);
     await octokit.rest.repos.deleteFile({
       owner: GITHUB_OWNER,
       repo: GITHUB_REPO,
