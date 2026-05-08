@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, CreditCard, Zap, ChevronDown, CheckCircle2, Hexagon } from 'lucide-react';
 import { db } from '../lib/firebase';
-import { doc, setDoc, serverTimestamp, collection, addDoc } from 'firebase/firestore';
+import { doc, setDoc, updateDoc, getDoc, serverTimestamp, collection, addDoc } from 'firebase/firestore';
 
 interface CheckoutModalProps {
   isOpen: boolean;
@@ -34,14 +34,14 @@ export function CheckoutModal({ isOpen, onClose, user, userData, cart, total, is
       const hasTrial = cart.some(i => i.type === 'trial');
       const plan = hasTrial ? 'trial' : (cart.some(i => i.type === 'aio') ? 'aio' : 'single');
       const singleClassItem = cart.find(i => i.type === 'one-class');
-      const selectedClass = plan === 'aio' ? 'all' : (singleClassItem?.wowClass || null);
+      const className = singleClassItem?.wowClass || null;
 
       const expirationDate = new Date();
       // Trial: 3 days, Others: 30 days
       const daysToAdd = plan === 'trial' ? 3 : 30;
       expirationDate.setDate(expirationDate.getDate() + daysToAdd);
 
-      console.log(`[CheckoutModal] User: ${user.uid}, Plan: ${plan}, Days: ${daysToAdd}, Expires: ${expirationDate}, Class: ${selectedClass}`);
+      console.log(`[CheckoutModal] User: ${user.uid}, Plan: ${plan}, Days: ${daysToAdd}, Expires: ${expirationDate}, Class: ${className || 'none'}`);
 
       // 1. Update Profile
       console.log("[CheckoutModal] Updating Firestore profile...");
@@ -49,18 +49,56 @@ export function CheckoutModal({ isOpen, onClose, user, userData, cart, total, is
       const updateData: any = {
         plan: plan,
         accountStatus: 'active',
-        expiresAt: expirationDate,
         updatedAt: serverTimestamp()
       };
 
       if (hasTrial) {
         updateData.trialUsed = true;
       }
-      if (selectedClass) {
-        updateData.selectedClass = selectedClass;
+
+      if (plan === 'aio' || plan === 'trial') {
+        // AIO / Trial: set aioExpires, preserve existing classEntitlements
+        updateData.aioExpires = expirationDate;
+        updateData.isAio = true;
+        console.log(`[CheckoutModal] Setting aioExpires=${expirationDate.toISOString()}`);
+      } else if (plan === 'single' && className) {
+        // Single class: merge into classEntitlements without overwriting other classes
+        updateData.isAio = false;
+        // Use dot-path merge via update() to avoid overwriting the whole map
+        // Since setDoc with merge:true merges top-level but may replace nested maps,
+        // we do a separate update for classEntitlements after the main setDoc
+        console.log(`[CheckoutModal] Adding classEntitlements.${className} expires=${expirationDate.toISOString()}`);
+      } else {
+        // Generic fallback
+        updateData.expiresAt = expirationDate;
+        console.log(`[CheckoutModal] Setting generic expiresAt=${expirationDate.toISOString()}`);
       }
 
       await setDoc(userRef, updateData, { merge: true });
+
+      // Separate update for classEntitlements to safely merge one class without overwriting others
+      if (plan === 'single' && className) {
+        try {
+          await updateDoc(userRef, {
+            [`classEntitlements.${className}.expires`]: expirationDate,
+            [`classEntitlements.${className}.updatedAt`]: serverTimestamp()
+          });
+          console.log(`[CheckoutModal] classEntitlements.${className} update SUCCESS`);
+        } catch (e) {
+          console.error(`[CheckoutModal] classEntitlements update failed:`, e);
+          // Fallback to setDoc with full classEntitlements object (reads current data first)
+          const snap = await getDoc(userRef);
+          const existing = snap.exists() ? (snap.data()?.classEntitlements || {}) : {};
+          await setDoc(userRef, {
+            classEntitlements: {
+              ...existing,
+              [className]: { expires: expirationDate, updatedAt: new Date() }
+            }
+          }, { merge: true });
+          console.log(`[CheckoutModal] classEntitlements fallback set SUCCESS`);
+        }
+      }
+
       console.log("[CheckoutModal] Profile update SUCCESS");
 
       // 2. Log Purchase

@@ -1,5 +1,6 @@
 import { Octokit } from 'octokit';
 import { getDb } from './firebase-admin.js';
+import { normalizeEntitlements, buildLicensePayload } from './entitlements.js';
 
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
 const GITHUB_OWNER = process.env.GITHUB_OWNER?.trim();
@@ -139,28 +140,29 @@ export async function syncKeyToGithub(
       key = knownKey;
     }
 
-    // --- EXPIRATION CHECK ---
-    const expiresAt = userData.expiresAt?.toDate?.() || userData.expiresAt;
-    console.log(`[GitHubSync] expiresAt resolved to: ${expiresAt || '(none)'}`);
+    // --- NORMALIZE ENTITLEMENTS ---
+    const normalized = normalizeEntitlements(userData);
+    console.log(`[GitHubSync] Normalized entitlements: plan=${normalized.plan}, aioExpires=${normalized.aioExpires ? 'set' : 'none'}, classes=[${Object.keys(normalized.classEntitlements).join(', ')}], migrated=${normalized.migrated}`);
 
-    if (!expiresAt || new Date(expiresAt) < new Date()) {
-      console.log(`[GitHubSync] Entitlement expired or missing. expiresAt=${expiresAt}, now=${new Date().toISOString()}`);
-      return { success: false, error: 'Entitlement expired' };
+    const activeClasses = Object.entries(normalized.classEntitlements).filter(([, v]) => {
+      const d = v.expires?.toDate ? v.expires.toDate() : (v.expires instanceof Date ? v.expires : new Date(v.expires));
+      return d && !isNaN(d.getTime()) && d > new Date();
+    }).map(([k]) => k);
+    const hasActiveAio = normalized.aioExpires && (() => {
+      const d = normalized.aioExpires?.toDate ? normalized.aioExpires.toDate() : (normalized.aioExpires instanceof Date ? normalized.aioExpires : new Date(normalized.aioExpires));
+      return d && !isNaN(d.getTime()) && d > new Date();
+    })();
+
+    if (!hasActiveAio && activeClasses.length === 0) {
+      console.log(`[GitHubSync] No active entitlements (AIO=${!!hasActiveAio}, classes=${activeClasses.length}). Skipping.`);
+      return { success: false, error: 'No active entitlements' };
     }
 
     // --- BUILD PAYLOAD ---
-    const plan = userData.plan || 'none';
-    const selectedClass = plan === 'aio' ? 'all' : (userData.selectedClass || null);
     const safeKey = String(key).trim().replace(/[^a-zA-Z0-9_-]/g, '');
     const filePath = `licenses/${safeKey}.json`;
 
-    const payload = {
-      key: safeKey,
-      plan,
-      selectedClass,
-      expires: new Date(expiresAt).toISOString(),
-      updatedAt: new Date().toISOString()
-    };
+    const payload = buildLicensePayload(safeKey, normalized);
     console.log(`[GitHubSync] Building license JSON:`, JSON.stringify(payload));
 
     // --- GITHUB API ---

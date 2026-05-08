@@ -286,7 +286,17 @@ export function Dashboard({ onUpgrade, targetUserId }: DashboardProps) {
     </div>
   );
 
-  const isExpired = userData?.expiresAt && typeof userData.expiresAt.toDate === 'function' && userData.expiresAt.toDate() < new Date();
+  const now = new Date();
+  const legacyExpired = userData?.expiresAt && typeof userData.expiresAt.toDate === 'function' && userData.expiresAt.toDate() < now;
+  const aioExpired = userData?.aioExpires && (() => {
+    const d = userData.aioExpires?.toDate ? userData.aioExpires.toDate() : new Date(userData.aioExpires);
+    return !isNaN(d.getTime()) && d < now;
+  })();
+  const anyActiveClass = userData?.classEntitlements && Object.values(userData.classEntitlements).some((ent: any) => {
+    const d = ent?.expires?.toDate ? ent.expires.toDate() : new Date(ent?.expires);
+    return !isNaN(d.getTime()) && d >= now;
+  });
+  const isExpired = legacyExpired && !anyActiveClass && (!userData?.aioExpires || aioExpired);
 
   return (
     <div className="max-w-7xl mx-auto px-6 md:px-12 py-12 space-y-12">
@@ -399,30 +409,43 @@ export function Dashboard({ onUpgrade, targetUserId }: DashboardProps) {
                     {userData?.plan === 'aio' ? 'All-In-One' : userData?.plan === 'single' ? 'Single Class' : userData?.plan === 'trial' ? '3-Day Trial' : 'No License'}
                   </span>
                 </div>
-                {((userData?.plan === 'single' && userData?.selectedClass) || userData?.plan === 'aio') && (
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-black text-white/25 uppercase tracking-widest">Class</span>
-                    <span className="px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border bg-white/5 text-white/60 border-white/10">
-                      {userData?.plan === 'aio' ? 'All Classes' : formatClassName(userData?.selectedClass)}
-                    </span>
+
+                {/* AIO Status */}
+                {userData?.aioExpires && (() => {
+                  const aioDate = userData.aioExpires?.toDate ? userData.aioExpires.toDate() : new Date(userData.aioExpires);
+                  const aioActive = !isNaN(aioDate.getTime()) && aioDate > new Date();
+                  return (
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-black text-white/25 uppercase tracking-widest">AIO Access</span>
+                      <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border ${aioActive ? 'bg-white/5 text-white/60 border-white/10' : 'bg-red-500/10 text-red-500 border-red-500/20'}`}>
+                        {aioActive ? `Until ${aioDate.toLocaleDateString()}` : 'Expired'}
+                      </span>
+                    </div>
+                  );
+                })()}
+
+                {/* Class Entitlements */}
+                {userData?.classEntitlements && Object.keys(userData.classEntitlements).length > 0 && (
+                  <div className="space-y-2 pt-2 border-t border-white/5">
+                    <span className="text-[10px] font-black text-white/25 uppercase tracking-widest block">Class Entitlements</span>
+                    {Object.entries(userData.classEntitlements).map(([cls, ent]: [string, any]) => {
+                      const expRaw = ent?.expires;
+                      const expDate = expRaw?.toDate ? expRaw.toDate() : new Date(expRaw);
+                      const isActive = !isNaN(expDate.getTime()) && expDate > new Date();
+                      return (
+                        <div key={cls} className="flex items-center justify-between">
+                          <span className="text-[10px] font-bold text-white/40 uppercase tracking-widest">{formatClassName(cls)}</span>
+                          <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-widest ${isActive ? 'bg-green-500/10 text-green-500 border border-green-500/20' : 'bg-red-500/10 text-red-500 border border-red-500/20'}`}>
+                            {isActive ? `Until ${expDate.toLocaleDateString()}` : 'Expired'}
+                          </span>
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
-                {userData?.plan === 'single' && !userData?.selectedClass && (
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-black text-white/25 uppercase tracking-widest">Class</span>
-                    <span className="px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border bg-red-500/10 text-red-500 border-red-500/20">
-                      Unknown Class
-                    </span>
-                  </div>
-                )}
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-black text-white/25 uppercase tracking-widest">Account Status</span>
-                  <span className={`flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest ${userData?.accountStatus === 'active' && !isExpired ? 'text-green-500' : 'text-red-500'}`}>
-                    {userData?.accountStatus === 'active' && !isExpired ? <CheckCircle2 className="w-3.5 h-3.5" /> : <XCircle className="w-3.5 h-3.5" />}
-                    {isExpired ? 'Expired' : userData?.accountStatus || 'Inactive'}
-                  </span>
-                </div>
-                {userData?.expiresAt && (
+
+                {/* Legacy fallback display */}
+                {!userData?.aioExpires && (!userData?.classEntitlements || Object.keys(userData.classEntitlements).length === 0) && userData?.expiresAt && (
                   <div className="flex items-center justify-between">
                     <span className="text-[10px] font-black text-white/25 uppercase tracking-widest">Expires</span>
                     <span className="text-[10px] font-bold text-white/60 tabular-nums">
@@ -430,6 +453,14 @@ export function Dashboard({ onUpgrade, targetUserId }: DashboardProps) {
                     </span>
                   </div>
                 )}
+
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-black text-white/25 uppercase tracking-widest">Account Status</span>
+                  <span className={`flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest ${userData?.accountStatus === 'active' && !isExpired ? 'text-green-500' : 'text-red-500'}`}>
+                    {userData?.accountStatus === 'active' && !isExpired ? <CheckCircle2 className="w-3.5 h-3.5" /> : <XCircle className="w-3.5 h-3.5" />}
+                    {isExpired ? 'Expired' : userData?.accountStatus || 'Inactive'}
+                  </span>
+                </div>
               </>
             )}
           </div>

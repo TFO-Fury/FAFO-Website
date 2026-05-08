@@ -4,6 +4,7 @@ import { getDb, FieldValue, Timestamp } from '../_lib/firebase-admin.js';
 import { syncDiscord } from '../_lib/discord.js';
 import { requireAdmin } from '../_lib/auth.js';
 import { syncKeyToGithub } from '../_lib/github.js';
+import { normalizeEntitlements } from '../_lib/entitlements.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
@@ -15,7 +16,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!caller) return;
 
   const body = await readJsonBody(req);
-  const { userId, email, planType, selectedClass: reqSelectedClass } = body || {};
+  const { userId, email, planType, className } = body || {};
 
   if (!userId || !planType) {
     return res.status(400).json({ error: 'userId and planType are required' });
@@ -30,31 +31,48 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const days = planType === 'trial' ? 3 : 30;
     const expirationDate = new Date();
     expirationDate.setDate(expirationDate.getDate() + days);
+    const expirationTimestamp = Timestamp.fromDate(expirationDate);
 
     const userDoc = await firestore.collection('users').doc(userId).get();
     const existingData = userDoc.exists ? userDoc.data() : null;
 
-    let selectedClass = reqSelectedClass;
-    if (!selectedClass && existingData?.selectedClass) {
-      selectedClass = existingData.selectedClass;
-    }
-    if (planType === 'aio') {
-      selectedClass = 'all';
-    }
+    // Normalize old schema
+    const normalized = normalizeEntitlements(existingData);
+    console.log(`[DevCheckout] Normalized entitlements for ${userId}: plan=${normalized.plan}, classes=[${Object.keys(normalized.classEntitlements).join(', ')}], aio=${normalized.aioExpires ? 'yes' : 'no'}`);
 
     const updatePayload: any = {
       email: email || null,
       plan: planType,
       accountStatus: 'active',
-      isAio: planType === 'aio',
-      expiresAt: Timestamp.fromDate(expirationDate),
-      updatedAt: FieldValue.serverTimestamp()
+      updatedAt: FieldValue.serverTimestamp(),
+      ...(normalized.migrated ? { selectedClass: FieldValue.delete() } : {})
     };
-    if (selectedClass) updatePayload.selectedClass = selectedClass;
+
+    if (planType === 'aio' || planType === 'trial') {
+      updatePayload.isAio = true;
+      updatePayload.aioExpires = expirationTimestamp;
+      // Preserve existing class entitlements
+      if (Object.keys(normalized.classEntitlements).length > 0) {
+        updatePayload.classEntitlements = normalized.classEntitlements;
+      }
+      console.log(`[DevCheckout] Granting AIO/Trial to ${userId}, aioExpires=${expirationDate.toISOString()}`);
+    } else if (planType === 'single' && className) {
+      updatePayload.isAio = false;
+      updatePayload.classEntitlements = {
+        ...normalized.classEntitlements,
+        [className]: {
+          expires: expirationTimestamp,
+          updatedAt: FieldValue.serverTimestamp()
+        }
+      };
+      console.log(`[DevCheckout] Granting single class=${className} to ${userId}, expires=${expirationDate.toISOString()}, totalClasses=${Object.keys(updatePayload.classEntitlements).length}`);
+    } else {
+      // Generic fallback
+      updatePayload.expiresAt = expirationTimestamp;
+      console.log(`[DevCheckout] Generic grant plan=${planType} to ${userId}, expires=${expirationDate.toISOString()}`);
+    }
 
     await firestore.collection('users').doc(userId).set(updatePayload, { merge: true });
-
-    console.log(`[DevCheckout] Granted ${planType} to user ${userId}, expires ${expirationDate.toISOString()}`);
 
     const discordResult = await syncDiscord(userId, planType);
     const githubResult = await syncKeyToGithub(userId);
@@ -62,6 +80,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(200).json({
       success: true,
       assignedPlan: planType,
+      className: className || null,
       expirationDate: expirationDate.toISOString(),
       discordSyncResult: discordResult
     });

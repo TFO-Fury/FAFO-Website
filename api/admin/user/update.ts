@@ -28,14 +28,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       updatedAt: FieldValue.serverTimestamp()
     };
 
-    if (updates.plan === 'aio') {
-      updatePayload.selectedClass = 'all';
+    // Remove legacy selectedClass if migrating
+    if (updates.classEntitlements || updates.aioExpires) {
+      updatePayload.selectedClass = FieldValue.delete();
     }
 
     await userRef.update(updatePayload);
     console.log(`[AdminUpdate] User ${userId} updated by ${caller.uid}`, updates);
 
-    const needsSync = updates.plan !== undefined || updates.accountStatus !== undefined || updates.expiresAt !== undefined;
+    const needsSync = updates.plan !== undefined ||
+      updates.accountStatus !== undefined ||
+      updates.expiresAt !== undefined ||
+      updates.aioExpires !== undefined ||
+      updates.classEntitlements !== undefined;
     let githubResult = null;
     if (needsSync) {
       githubResult = await syncKeyToGithub(userId);

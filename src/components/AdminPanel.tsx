@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { db, auth, handleFirestoreError, OperationType } from '../lib/firebase';
-import { collection, onSnapshot, doc, updateDoc, deleteDoc, query, orderBy, limit } from 'firebase/firestore';
+import { collection, onSnapshot, doc, updateDoc, deleteDoc, query, orderBy, limit, Timestamp, serverTimestamp } from 'firebase/firestore';
 import { 
   Search, 
   Edit3, 
@@ -74,13 +74,34 @@ export function AdminPanel({ onViewUser }: AdminPanelProps) {
       if (!currentUser) throw new Error('Not authenticated');
       const token = await currentUser.getIdToken(true);
 
+      // Strip internal UI-only fields and convert date strings to Timestamps
+      const { _newClass, _newClassExpires, ...cleanUpdates } = editForm;
+
+      // Convert aioExpires string -> Timestamp
+      if (cleanUpdates.aioExpires) {
+        cleanUpdates.aioExpires = Timestamp.fromDate(new Date(cleanUpdates.aioExpires));
+      }
+
+      // Convert classEntitlements date strings -> Timestamps
+      if (cleanUpdates.classEntitlements && typeof cleanUpdates.classEntitlements === 'object') {
+        const processed: Record<string, any> = {};
+        for (const [cls, ent] of Object.entries(cleanUpdates.classEntitlements)) {
+          const raw = ent as any;
+          processed[cls] = {
+            expires: raw?.expires ? Timestamp.fromDate(new Date(raw.expires)) : null,
+            updatedAt: serverTimestamp()
+          };
+        }
+        cleanUpdates.classEntitlements = processed;
+      }
+
       const res = await fetch('/api/admin/user/update', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify({ userId, updates: editForm })
+        body: JSON.stringify({ userId, updates: cleanUpdates })
       });
 
       const data = await res.json();
@@ -95,7 +116,7 @@ export function AdminPanel({ onViewUser }: AdminPanelProps) {
   };
 
   // ─── DEV TEST: fake checkout entitlement grant ───
-  const handleDevCheckout = async (targetUser: any, planType: 'trial' | 'single' | 'aio') => {
+  const handleDevCheckout = async (targetUser: any, planType: 'trial' | 'single' | 'aio', className?: string) => {
     try {
       const currentUser = auth.currentUser;
       if (!currentUser) throw new Error('Not authenticated');
@@ -110,7 +131,8 @@ export function AdminPanel({ onViewUser }: AdminPanelProps) {
         body: JSON.stringify({
           userId: targetUser.id,
           email: targetUser.email,
-          planType
+          planType,
+          ...(className ? { className } : {})
         })
       });
 
@@ -294,6 +316,85 @@ export function AdminPanel({ onViewUser }: AdminPanelProps) {
                         <option value="admin">Admin</option>
                         <option value="owner">Owner</option>
                       </select>
+
+                      {/* AIO Expiration */}
+                      <div className="space-y-1 pt-1">
+                        <label className="text-[10px] font-black text-white/25 uppercase tracking-widest block">AIO Expires</label>
+                        <input
+                          type="date"
+                          value={editForm.aioExpires || ''}
+                          onChange={(e) => setEditForm({...editForm, aioExpires: e.target.value || null})}
+                          className="w-full h-9 rounded-lg bg-background border border-white/10 text-xs font-bold uppercase px-3 text-white/60"
+                        />
+                      </div>
+
+                      {/* Class Entitlements Editor */}
+                      <div className="space-y-1 pt-1">
+                        <label className="text-[10px] font-black text-white/25 uppercase tracking-widest block">Class Entitlements</label>
+                        {editForm.classEntitlements && Object.entries(editForm.classEntitlements).map(([cls, ent]: [string, any]) => (
+                          <div key={cls} className="flex items-center gap-2">
+                            <span className="text-[10px] font-bold text-white/60 uppercase w-20 truncate">{formatClassName(cls)}</span>
+                            <input
+                              type="date"
+                              value={ent?.expires || ''}
+                              onChange={(e) => {
+                                const updated = { ...editForm.classEntitlements };
+                                updated[cls] = { ...updated[cls], expires: e.target.value };
+                                setEditForm({...editForm, classEntitlements: updated});
+                              }}
+                              className="flex-1 h-8 rounded-lg bg-background border border-white/10 text-[10px] font-bold uppercase px-2 text-white/60"
+                            />
+                            <button
+                              onClick={() => {
+                                const updated = { ...editForm.classEntitlements };
+                                delete updated[cls];
+                                setEditForm({...editForm, classEntitlements: updated});
+                              }}
+                              className="p-1.5 rounded bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white transition-all"
+                              title="Remove class"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </button>
+                          </div>
+                        ))}
+                        {/* Add Class */}
+                        <div className="flex items-center gap-2 pt-1">
+                          <select
+                            value={editForm._newClass || ''}
+                            onChange={(e) => setEditForm({...editForm, _newClass: e.target.value})}
+                            className="flex-1 h-8 rounded-lg bg-background border border-white/10 text-[10px] font-bold uppercase px-2 text-white/60"
+                          >
+                            <option value="">Select Class</option>
+                            {[
+                              'deathknight', 'demonhunter', 'druid', 'evoker', 'hunter',
+                              'mage', 'monk', 'paladin', 'priest', 'rogue',
+                              'shaman', 'warlock', 'warrior'
+                            ].filter(c => !editForm.classEntitlements?.[c]).map(c => (
+                              <option key={c} value={c}>{formatClassName(c)}</option>
+                            ))}
+                          </select>
+                          <input
+                            type="date"
+                            value={editForm._newClassExpires || ''}
+                            onChange={(e) => setEditForm({...editForm, _newClassExpires: e.target.value})}
+                            className="h-8 rounded-lg bg-background border border-white/10 text-[10px] font-bold uppercase px-2 text-white/60"
+                          />
+                          <button
+                            onClick={() => {
+                              const cls = editForm._newClass;
+                              const exp = editForm._newClassExpires;
+                              if (!cls || !exp) return;
+                              const updated = { ...(editForm.classEntitlements || {}) };
+                              updated[cls] = { expires: exp, updatedAt: new Date().toISOString() };
+                              setEditForm({...editForm, classEntitlements: updated, _newClass: '', _newClassExpires: ''});
+                            }}
+                            className="p-1.5 rounded bg-primary/10 text-primary hover:bg-primary hover:text-white transition-all"
+                            title="Add class"
+                          >
+                            <Plus className="w-3 h-3" />
+                          </button>
+                        </div>
+                      </div>
                     </div>
                   ) : (
                     <div className="flex flex-col gap-1.5">
@@ -301,35 +402,49 @@ export function AdminPanel({ onViewUser }: AdminPanelProps) {
                         <span className={`w-fit px-2.5 py-0.5 rounded text-[9px] font-black uppercase tracking-widest ${user?.plan && user?.plan !== 'none' ? 'bg-primary/20 text-primary border border-primary/20' : 'bg-white/5 text-white/40'}`}>
                           {user?.plan || 'none'}
                         </span>
-                        {user?.plan === 'aio' && (
-                          <span className="px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-widest bg-white/5 text-white/60 border border-white/10">
-                            All Classes
-                          </span>
-                        )}
-                        {user?.plan === 'single' && !!user?.selectedClass && (
-                          <span className="px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-widest bg-blue-500/10 text-blue-500 border border-blue-500/20">
-                            {formatClassName(user.selectedClass)}
-                          </span>
-                        )}
-                        {user?.plan === 'single' && !user?.selectedClass && (
-                          <span className="px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-widest bg-red-500/10 text-red-500 border border-red-500/20">
-                            Unknown Class
-                          </span>
-                        )}
-                        {user?.plan === 'trial' && !!user?.selectedClass && (
-                          <span className="px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-widest bg-purple-500/10 text-purple-500 border border-purple-500/20">
-                            {formatClassName(user.selectedClass)}
-                          </span>
-                        )}
+                        {/* AIO Status */}
+                        {user?.aioExpires && (() => {
+                          const d = user.aioExpires?.toDate ? user.aioExpires.toDate() : new Date(user.aioExpires);
+                          const active = !isNaN(d.getTime()) && d > new Date();
+                          return (
+                            <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-widest border ${active ? 'bg-white/5 text-white/60 border-white/10' : 'bg-red-500/10 text-red-500 border-red-500/20'}`}>
+                              AIO {active ? `Until ${d.toLocaleDateString()}` : 'Expired'}
+                            </span>
+                          );
+                        })()}
                       </div>
-                      <span className={`text-[10px] font-bold uppercase tracking-tight ${user?.accountStatus === 'active' ? 'text-green-500' : 'text-red-500'}`}>
-                        {user?.accountStatus || 'unknown'}
-                      </span>
-                      {user?.expiresAt && (
+
+                      {/* Class Entitlements */}
+                      {user?.classEntitlements && Object.keys(user.classEntitlements).length > 0 && (
+                        <div className="flex flex-col gap-1">
+                          {Object.entries(user.classEntitlements).map(([cls, ent]: [string, any]) => {
+                            const d = ent?.expires?.toDate ? ent.expires.toDate() : new Date(ent?.expires);
+                            const active = !isNaN(d.getTime()) && d > new Date();
+                            return (
+                              <div key={cls} className="flex items-center gap-1.5">
+                                <span className={`w-1.5 h-1.5 rounded-full ${active ? 'bg-green-500' : 'bg-red-500'}`} />
+                                <span className={`text-[9px] font-black uppercase tracking-widest ${active ? 'text-white/60' : 'text-white/30'}`}>
+                                  {formatClassName(cls)}
+                                </span>
+                                <span className="text-[9px] text-white/30 tabular-nums">
+                                  {active ? d.toLocaleDateString() : `Expired ${d.toLocaleDateString()}`}
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      {/* Legacy fallback */}
+                      {!user?.aioExpires && (!user?.classEntitlements || Object.keys(user.classEntitlements).length === 0) && user?.expiresAt && (
                         <span className="text-[10px] text-white/20 font-bold uppercase tabular-nums">
                           Expires: {typeof user.expiresAt.toDate === 'function' ? user.expiresAt.toDate().toLocaleDateString() : 'Unknown'}
                         </span>
                       )}
+
+                      <span className={`text-[10px] font-bold uppercase tracking-tight ${user?.accountStatus === 'active' ? 'text-green-500' : 'text-red-500'}`}>
+                        {user?.accountStatus || 'unknown'}
+                      </span>
                     </div>
                   )}
                 </td>
@@ -394,10 +509,20 @@ export function AdminPanel({ onViewUser }: AdminPanelProps) {
                         <button
                           onClick={() => {
                             setEditingUser(user?.id);
+                            // Normalize legacy selectedClass into classEntitlements for editing
+                            const legacyClass = user?.selectedClass && !user?.classEntitlements
+                              ? { [user.selectedClass]: { expires: user?.expiresAt, updatedAt: user?.updatedAt } }
+                              : undefined;
+                            const classEntitlements = user?.classEntitlements || legacyClass || {};
+                            const aioDate = user?.aioExpires?.toDate
+                              ? user.aioExpires.toDate().toISOString().split('T')[0]
+                              : (user?.aioExpires instanceof Date ? user.aioExpires.toISOString().split('T')[0] : '');
                             setEditForm({
                               plan: user?.plan,
                               accountStatus: user?.accountStatus,
-                              role: user?.role || 'user'
+                              role: user?.role || 'user',
+                              aioExpires: aioDate || null,
+                              classEntitlements
                             });
                           }}
                           className="p-2.5 rounded-xl bg-white/5 text-white/40 opacity-0 group-hover:opacity-100 hover:bg-white/10 transition-all shadow-xl"
@@ -415,7 +540,10 @@ export function AdminPanel({ onViewUser }: AdminPanelProps) {
                             Trial
                           </button>
                           <button
-                            onClick={() => handleDevCheckout(user, 'single')}
+                            onClick={() => {
+                              const cls = prompt('Grant which class? (lowercase, e.g. warrior, shaman)', 'warrior');
+                              if (cls) handleDevCheckout(user, 'single', cls.trim().toLowerCase());
+                            }}
                             className="px-2 py-1 rounded bg-blue-500/10 border border-blue-500/20 text-[9px] font-black uppercase text-blue-500 tracking-widest hover:bg-blue-500 hover:text-white transition-all"
                             title="Grant Single"
                           >
