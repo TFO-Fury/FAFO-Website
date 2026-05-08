@@ -322,11 +322,10 @@ async function startServer() {
 
       await batch.commit();
       console.log(`[API] Successfully committed activation for user ${userId}`);
-      
+
       syncDiscord(userId, plan).catch(err => console.error("[Discord Sync Error]", err));
-      syncKeyToGithub(userId).then(result => {
-        console.log(`[GitHubSync] Activation trigger result:`, result);
-      }).catch(err => console.error('[GitHubSync] Activation trigger error:', err));
+      const githubResult = await syncKeyToGithub(userId, key);
+      console.log(`[GitHubSync] Activation trigger result:`, githubResult);
       res.json({ success: true, plan, expiresAt: expirationDate });
     } catch (err: any) {
       console.error("[Activation Error]", err);

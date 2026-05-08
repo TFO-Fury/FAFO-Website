@@ -96,9 +96,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     console.log(`[API] Successfully committed activation for user ${userId}`);
 
     syncDiscord(userId, plan).catch(err => console.error('[Discord Sync Error]', err));
-    syncKeyToGithub(userId).then(result => {
-      console.log(`[GitHubSync] Activation trigger result:`, result);
-    }).catch(err => console.error('[GitHubSync] Activation trigger error:', err));
+    const githubResult = await syncKeyToGithub(userId, key);
+    console.log(`[GitHubSync] Activation trigger result:`, githubResult);
 
     return res.status(200).json({ success: true, plan, expiresAt: expirationDate });
   } catch (err: any) {

@@ -5,7 +5,9 @@ const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
 const GITHUB_OWNER = process.env.GITHUB_OWNER;
 const GITHUB_REPO = process.env.GITHUB_REPO;
 
-export async function syncKeyToGithub(userId: string): Promise<{ success: boolean; path?: string; sha?: string; error?: string }> {
+export async function syncKeyToGithub(userId: string, knownKey?: string): Promise<{ success: boolean; path?: string; sha?: string; error?: string }> {
+  console.log(`[GitHubSync] Starting sync for userId=${userId}, knownKey=${knownKey || '(none)'}`);
+
   if (!GITHUB_TOKEN || !GITHUB_OWNER || !GITHUB_REPO) {
     console.log('[GitHubSync] Missing GitHub credentials, skipping sync');
     return { success: false, error: 'Missing GitHub credentials' };
@@ -16,38 +18,85 @@ export async function syncKeyToGithub(userId: string): Promise<{ success: boolea
 
     const userDoc = await firestore.collection('users').doc(userId).get();
     if (!userDoc.exists) {
+      console.warn(`[GitHubSync] User ${userId} not found in Firestore`);
       return { success: false, error: 'User not found' };
     }
 
     const userData = userDoc.data();
+    console.log(`[GitHubSync] User ${userId} loaded. Status: ${userData?.accountStatus}, Plan: ${userData?.plan}, selectedClass: ${userData?.selectedClass || '(none)'}`);
+
     if (!userData || userData.accountStatus !== 'active') {
       console.log(`[GitHubSync] User ${userId} not active (status: ${userData?.accountStatus}), skipping`);
       return { success: false, error: 'User not active' };
     }
 
-    const keysSnap = await firestore.collection('cd_keys')
-      .where('userId', '==', userId)
-      .where('status', '==', 'active')
-      .limit(1)
-      .get();
+    let key: string | undefined = knownKey;
 
-    if (keysSnap.empty) {
-      console.log(`[GitHubSync] No active key found for user ${userId}, skipping`);
-      return { success: false, error: 'No active key found' };
+    if (!key) {
+      console.log(`[GitHubSync] No knownKey provided. Querying cd_keys for userId=${userId}, status=active`);
+
+      let keysSnap;
+      try {
+        keysSnap = await firestore.collection('cd_keys')
+          .where('userId', '==', userId)
+          .where('status', '==', 'active')
+          .orderBy('updatedAt', 'desc')
+          .limit(1)
+          .get();
+      } catch (queryErr: any) {
+        console.error(`[GitHubSync] Firestore query failed (missing composite index?). Collection: cd_keys, filters: userId==${userId}, status==active, orderBy: updatedAt desc. Error:`, queryErr);
+
+        console.log(`[GitHubSync] Retrying query without orderBy...`);
+        keysSnap = await firestore.collection('cd_keys')
+          .where('userId', '==', userId)
+          .where('status', '==', 'active')
+          .limit(1)
+          .get();
+      }
+
+      console.log(`[GitHubSync] Query returned ${keysSnap.size} active key(s) for user ${userId}`);
+
+      if (keysSnap.empty) {
+        console.log(`[GitHubSync] No active key found. Waiting 1.5s for eventual consistency then retrying...`);
+        await new Promise(r => setTimeout(r, 1500));
+
+        keysSnap = await firestore.collection('cd_keys')
+          .where('userId', '==', userId)
+          .where('status', '==', 'active')
+          .limit(1)
+          .get();
+
+        console.log(`[GitHubSync] Retry query returned ${keysSnap.size} active key(s)`);
+      }
+
+      if (keysSnap.empty) {
+        const warning = `No active key found for user ${userId} after query + retry. GitHub sync skipped.`;
+        console.warn(`[GitHubSync] ${warning}`);
+        return { success: false, error: warning };
+      }
+
+      const keyDoc = keysSnap.docs[0];
+      key = keyDoc.id;
+      const keyData = keyDoc.data();
+      console.log(`[GitHubSync] Selected key: ${key} (updatedAt: ${keyData?.updatedAt?.toDate?.() || keyData?.updatedAt || 'unknown'})`);
+    } else {
+      console.log(`[GitHubSync] Using knownKey directly: ${key}`);
     }
 
-    const keyDoc = keysSnap.docs[0];
-    const key = keyDoc.id;
-
     const expiresAt = userData.expiresAt?.toDate?.() || userData.expiresAt;
+    console.log(`[GitHubSync] expiresAt: ${expiresAt || '(none)'}`);
+
     if (!expiresAt || new Date(expiresAt) < new Date()) {
-      console.log(`[GitHubSync] User ${userId} entitlement expired, skipping`);
+      console.log(`[GitHubSync] User ${userId} entitlement expired (${expiresAt}), skipping`);
       return { success: false, error: 'Entitlement expired' };
     }
 
     const plan = userData.plan || 'none';
     const selectedClass = plan === 'aio' ? 'all' : (userData.selectedClass || null);
     const filePath = `licenses/${key}.json`;
+
+    console.log(`[GitHubSync] Building license JSON. key=${key}, plan=${plan}, selectedClass=${selectedClass}, expires=${new Date(expiresAt).toISOString()}`);
+
     const content = JSON.stringify({
       key,
       plan,
@@ -84,7 +133,8 @@ export async function syncKeyToGithub(userId: string): Promise<{ success: boolea
       sha
     });
 
-    console.log(`[GitHubSync] Success - ${sha ? 'Updated' : 'Created'} ${filePath} (commit: ${result.data.commit.sha})`);
+    const action = sha ? 'Updated' : 'Created';
+    console.log(`[GitHubSync] ${action} file: ${filePath} (commit: ${result.data.commit.sha})`);
     if (selectedClass) {
       console.log(`[License] Selected class synced: ${selectedClass}`);
     }

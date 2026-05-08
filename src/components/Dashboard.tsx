@@ -23,6 +23,14 @@ import {
 import { CDKeyManager } from './CDKeyManager';
 import { isAdmin, isOwner } from './Auth';
 
+function formatClassName(val: any): string {
+  if (!val) return 'Unknown Class';
+  if (typeof val !== 'string') return String(val);
+  const trimmed = val.trim();
+  if (!trimmed) return 'Unknown Class';
+  return trimmed.split(' ').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+}
+
 interface DashboardProps {
   onUpgrade: () => void;
   targetUserId?: string | null;
@@ -60,7 +68,7 @@ export function Dashboard({ onUpgrade, targetUserId }: DashboardProps) {
         setAdminDiscordId(data.discordId || '');
         setAdminPlan(data.plan || 'none');
         setAdminStatus(data.accountStatus || 'inactive');
-        if (data.expiresAt) {
+        if (data.expiresAt && typeof data.expiresAt.toDate === 'function') {
           const date = data.expiresAt.toDate();
           setAdminExpiresAt(date.toISOString().split('T')[0]);
         }
@@ -105,7 +113,7 @@ export function Dashboard({ onUpgrade, targetUserId }: DashboardProps) {
     if (!userData || isAdminViewing) return;
     
     const checkExpiration = async () => {
-      if (userData.expiresAt && userData.accountStatus === 'active') {
+      if (userData.expiresAt && typeof userData.expiresAt.toDate === 'function' && userData.accountStatus === 'active') {
         const expiry = userData.expiresAt.toDate();
         if (expiry < new Date()) {
           console.log("[Auto-Expire] Plan has ended. Updating status...");
@@ -278,7 +286,7 @@ export function Dashboard({ onUpgrade, targetUserId }: DashboardProps) {
     </div>
   );
 
-  const isExpired = userData?.expiresAt && userData.expiresAt.toDate() < new Date();
+  const isExpired = userData?.expiresAt && typeof userData.expiresAt.toDate === 'function' && userData.expiresAt.toDate() < new Date();
 
   return (
     <div className="max-w-7xl mx-auto px-6 md:px-12 py-12 space-y-12">
@@ -395,7 +403,7 @@ export function Dashboard({ onUpgrade, targetUserId }: DashboardProps) {
                   <div className="flex items-center justify-between">
                     <span className="text-[10px] font-black text-white/25 uppercase tracking-widest">Class</span>
                     <span className="px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border bg-white/5 text-white/60 border-white/10">
-                      {userData?.plan === 'aio' ? 'All Classes' : userData?.selectedClass ? userData.selectedClass.split(' ').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ') : 'Unknown Class'}
+                      {userData?.plan === 'aio' ? 'All Classes' : formatClassName(userData?.selectedClass)}
                     </span>
                   </div>
                 )}
@@ -418,7 +426,7 @@ export function Dashboard({ onUpgrade, targetUserId }: DashboardProps) {
                   <div className="flex items-center justify-between">
                     <span className="text-[10px] font-black text-white/25 uppercase tracking-widest">Expires</span>
                     <span className="text-[10px] font-bold text-white/60 tabular-nums">
-                      {userData.expiresAt.toDate().toLocaleDateString()}
+                      {typeof userData.expiresAt.toDate === 'function' ? userData.expiresAt.toDate().toLocaleDateString() : 'Unknown'}
                     </span>
                   </div>
                 )}
@@ -524,7 +532,7 @@ export function Dashboard({ onUpgrade, targetUserId }: DashboardProps) {
                           <span className="text-xs font-black text-primary italic tracking-widest">${order.amount}</span>
                         </td>
                         <td className="px-8 py-6">
-                          <span className="text-[10px] font-bold text-white/30 tabular-nums">{order.createdAt?.toDate().toLocaleDateString()}</span>
+                          <span className="text-[10px] font-bold text-white/30 tabular-nums">{typeof order.createdAt?.toDate === 'function' ? order.createdAt.toDate().toLocaleDateString() : 'N/A'}</span>
                         </td>
                         <td className="px-8 py-6">
                           <div className={`w-2 h-2 rounded-full ${order.status === 'completed' ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.5)]' : 'bg-orange-500 shadow-[0_0_8px_rgba(249,115,22,0.5)]'}`} />

@@ -24,6 +24,14 @@ interface AdminPanelProps {
   onViewUser: (userId: string) => void;
 }
 
+function formatClassName(val: any): string {
+  if (!val) return 'Unknown Class';
+  if (typeof val !== 'string') return String(val);
+  const trimmed = val.trim();
+  if (!trimmed) return 'Unknown Class';
+  return trimmed.split(' ').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+}
+
 export function AdminPanel({ onViewUser }: AdminPanelProps) {
   const [users, setUsers] = useState<any[]>([]);
   const [allKeys, setAllKeys] = useState<any[]>([]);
@@ -119,15 +127,23 @@ export function AdminPanel({ onViewUser }: AdminPanelProps) {
     }
   };
 
-  const filteredUsers = users.filter(user => {
-    const userKeys = allKeys.filter(k => k.userId === user.id).map(k => k.key.toLowerCase());
-    const matchesSearch = user.email?.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                         user.discordId?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         userKeys.some(k => k.includes(searchTerm.toLowerCase()));
-    const matchesPlan = filterPlan === 'all' || user.plan === filterPlan;
-    const matchesStatus = filterStatus === 'all' || user.accountStatus === filterStatus;
-    return matchesSearch && matchesPlan && matchesStatus;
-  });
+  let filteredUsers = users;
+  try {
+    filteredUsers = users.filter(user => {
+      if (!user) return false;
+      const userKeys = allKeys
+        .filter(k => k && k.userId === user.id)
+        .map(k => (k.key ?? k.id ?? '').toLowerCase());
+      const matchesSearch = (user.email || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                           (user.discordId || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                           userKeys.some(k => k.includes(searchTerm.toLowerCase()));
+      const matchesPlan = filterPlan === 'all' || user.plan === filterPlan;
+      const matchesStatus = filterStatus === 'all' || user.accountStatus === filterStatus;
+      return matchesSearch && matchesPlan && matchesStatus;
+    });
+  } catch (err) {
+    console.error('[AdminPanel] filteredUsers computation crashed, falling back to unfiltered list:', err);
+  }
 
   if (loading) return <div className="flex-1 flex items-center justify-center"><div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" /></div>;
 
@@ -219,24 +235,26 @@ export function AdminPanel({ onViewUser }: AdminPanelProps) {
             </tr>
           </thead>
           <tbody className="divide-y divide-white/5">
-            {filteredUsers.map(user => (
-              <tr key={user.id} className="hover:bg-white/[0.01] transition-colors group">
+            {filteredUsers.map(user => {
+              try {
+                return (
+                  <tr key={user?.id || 'unknown'} className="hover:bg-white/[0.01] transition-colors group">
                 <td className="px-8 py-6">
                   <div className="flex flex-col gap-1">
-                    <span className="text-white font-bold text-sm tracking-tight">{user.email}</span>
+                    <span className="text-white font-bold text-sm tracking-tight">{user?.email || 'No Email'}</span>
                     <div className="flex items-center gap-1.5 overflow-hidden">
-                      <span className="text-[9px] font-mono text-white/20 uppercase truncate max-w-[120px]">{user.id}</span>
-                      {user.role === 'admin' && (
+                      <span className="text-[9px] font-mono text-white/20 uppercase truncate max-w-[120px]">{user?.id || '?'}</span>
+                      {user?.role === 'admin' && (
                         <span className="px-1.5 py-0.5 rounded bg-primary/20 border border-primary/20 text-[8px] font-black uppercase text-primary tracking-widest flex items-center gap-1 flex-shrink-0">
                           <ShieldCheck className="w-2.5 h-2.5" /> Admin
                         </span>
                       )}
-                      {user.role === 'owner' && (
+                      {user?.role === 'owner' && (
                         <span className="px-1.5 py-0.5 rounded bg-orange-500/20 border border-orange-500/20 text-[8px] font-black uppercase text-orange-500 tracking-widest flex items-center gap-1 flex-shrink-0">
                           <ShieldCheck className="w-2.5 h-2.5" /> Owner
                         </span>
                       )}
-                      {user.role === 'trial' && (
+                      {user?.role === 'trial' && (
                         <span className="px-1.5 py-0.5 rounded bg-purple-500/20 border border-purple-500/20 text-[8px] font-black uppercase text-purple-500 tracking-widest flex items-center gap-1 flex-shrink-0">
                           <ShieldCheck className="w-2.5 h-2.5" /> Trial
                         </span>
@@ -245,10 +263,10 @@ export function AdminPanel({ onViewUser }: AdminPanelProps) {
                   </div>
                 </td>
                 <td className="px-8 py-6">
-                  {editingUser === user.id ? (
+                  {editingUser === user?.id ? (
                     <div className="space-y-2">
-                      <select 
-                        value={editForm.plan} 
+                      <select
+                        value={editForm.plan}
                         onChange={(e) => setEditForm({...editForm, plan: e.target.value})}
                         className="w-full h-9 rounded-lg bg-background border border-white/10 text-xs font-bold uppercase px-3"
                       >
@@ -257,8 +275,8 @@ export function AdminPanel({ onViewUser }: AdminPanelProps) {
                         <option value="single">Single</option>
                         <option value="aio">AIO</option>
                       </select>
-                      <select 
-                        value={editForm.accountStatus} 
+                      <select
+                        value={editForm.accountStatus}
                         onChange={(e) => setEditForm({...editForm, accountStatus: e.target.value})}
                         className="w-full h-9 rounded-lg bg-background border border-white/10 text-xs font-bold uppercase px-3"
                       >
@@ -280,36 +298,36 @@ export function AdminPanel({ onViewUser }: AdminPanelProps) {
                   ) : (
                     <div className="flex flex-col gap-1.5">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className={`w-fit px-2.5 py-0.5 rounded text-[9px] font-black uppercase tracking-widest ${user.plan !== 'none' ? 'bg-primary/20 text-primary border border-primary/20' : 'bg-white/5 text-white/40'}`}>
-                          {user.plan}
+                        <span className={`w-fit px-2.5 py-0.5 rounded text-[9px] font-black uppercase tracking-widest ${user?.plan && user?.plan !== 'none' ? 'bg-primary/20 text-primary border border-primary/20' : 'bg-white/5 text-white/40'}`}>
+                          {user?.plan || 'none'}
                         </span>
-                        {user.plan === 'aio' && (
+                        {user?.plan === 'aio' && (
                           <span className="px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-widest bg-white/5 text-white/60 border border-white/10">
                             All Classes
                           </span>
                         )}
-                        {user.plan === 'single' && user.selectedClass && (
+                        {user?.plan === 'single' && !!user?.selectedClass && (
                           <span className="px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-widest bg-blue-500/10 text-blue-500 border border-blue-500/20">
-                            {typeof user.selectedClass === 'string' ? user.selectedClass.split(' ').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ') : user.selectedClass}
+                            {formatClassName(user.selectedClass)}
                           </span>
                         )}
-                        {user.plan === 'single' && !user.selectedClass && (
+                        {user?.plan === 'single' && !user?.selectedClass && (
                           <span className="px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-widest bg-red-500/10 text-red-500 border border-red-500/20">
                             Unknown Class
                           </span>
                         )}
-                        {user.plan === 'trial' && user.selectedClass && (
+                        {user?.plan === 'trial' && !!user?.selectedClass && (
                           <span className="px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-widest bg-purple-500/10 text-purple-500 border border-purple-500/20">
-                            {typeof user.selectedClass === 'string' ? user.selectedClass.split(' ').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ') : user.selectedClass}
+                            {formatClassName(user.selectedClass)}
                           </span>
                         )}
                       </div>
-                      <span className={`text-[10px] font-bold uppercase tracking-tight ${user.accountStatus === 'active' ? 'text-green-500' : 'text-red-500'}`}>
-                        {user.accountStatus}
+                      <span className={`text-[10px] font-bold uppercase tracking-tight ${user?.accountStatus === 'active' ? 'text-green-500' : 'text-red-500'}`}>
+                        {user?.accountStatus || 'unknown'}
                       </span>
-                      {user.expiresAt && (
+                      {user?.expiresAt && (
                         <span className="text-[10px] text-white/20 font-bold uppercase tabular-nums">
-                          Expires: {user.expiresAt?.toDate().toLocaleDateString()}
+                          Expires: {typeof user.expiresAt.toDate === 'function' ? user.expiresAt.toDate().toLocaleDateString() : 'Unknown'}
                         </span>
                       )}
                     </div>
@@ -319,21 +337,21 @@ export function AdminPanel({ onViewUser }: AdminPanelProps) {
                   <div className="space-y-1">
                     <div className="flex items-center gap-2">
                       <span className="text-[10px] font-black text-white/20 uppercase tracking-widest">Discord</span>
-                      <span className={user.discordId ? "text-[11px] text-primary font-bold" : "text-[11px] text-white/20 italic"}>{user.discordId || 'Not Linked'}</span>
+                      <span className={user?.discordId ? "text-[11px] text-primary font-bold" : "text-[11px] text-white/20 italic"}>{user?.discordId || 'Not Linked'}</span>
                     </div>
-                    {allKeys.filter(k => k.userId === user.id).map(key => (
-                      <div key={key.id} className="space-y-1">
+                    {allKeys.filter(k => k && k.userId === user?.id).map(key => (
+                      <div key={key?.id || 'k'} className="space-y-1">
                         <div className="flex items-center gap-2">
                           <span className="text-[10px] font-black text-white/20 uppercase tracking-widest">Key</span>
-                          <span className="text-[11px] text-orange-500 font-mono font-bold truncate max-w-[150px]" title={key.key}>{key.key}</span>
+                          <span className="text-[11px] text-orange-500 font-mono font-bold truncate max-w-[150px]" title={key?.key || key?.id || ''}>{key?.key || key?.id || '?'}</span>
                         </div>
                         <div className="flex items-center gap-2 pl-2 border-l border-white/5">
                           <span className="text-[9px] font-black text-white/10 uppercase tracking-widest">Tier</span>
-                          <span className="text-[9px] text-white/40 font-bold uppercase">{key.plan || 'AIO'}</span>
+                          <span className="text-[9px] text-white/40 font-bold uppercase">{key?.plan || 'AIO'}</span>
                         </div>
                       </div>
                     ))}
-                    {user.entitlements?.length > 0 && (
+                    {Array.isArray(user?.entitlements) && user.entitlements.length > 0 && (
                       <div className="flex items-center gap-2">
                         <span className="text-[10px] font-black text-white/20 uppercase tracking-widest">Entitled</span>
                         <span className="text-[10px] text-white/60 font-bold">{user.entitlements.length} Slots</span>
@@ -344,20 +362,20 @@ export function AdminPanel({ onViewUser }: AdminPanelProps) {
                 <td className="px-8 py-6">
                   <div className="flex items-center gap-2 text-white/30">
                     <Clock className="w-3.5 h-3.5" />
-                    <span className="text-[11px] font-medium tabular-nums">{user.createdAt?.toDate?.()?.toLocaleDateString() || 'N/A'}</span>
+                    <span className="text-[11px] font-medium tabular-nums">{typeof user?.createdAt?.toDate === 'function' ? user.createdAt.toDate().toLocaleDateString() : 'N/A'}</span>
                   </div>
                 </td>
                 <td className="px-8 py-6">
                   <div className="flex items-center gap-2">
-                    {editingUser === user.id ? (
+                    {editingUser === user?.id ? (
                       <>
-                        <button 
-                          onClick={() => handleUpdateUser(user.id)}
+                        <button
+                          onClick={() => handleUpdateUser(user?.id)}
                           className="p-2.5 rounded-xl bg-green-500/20 text-green-500 hover:bg-green-500 hover:text-white transition-all shadow-lg shadow-green-500/10"
                         >
                           <Save className="w-4 h-4" />
                         </button>
-                        <button 
+                        <button
                           onClick={() => setEditingUser(null)}
                           className="p-2.5 rounded-xl bg-white/5 text-white/40 hover:bg-white/10 transition-all font-bold"
                         >
@@ -366,8 +384,8 @@ export function AdminPanel({ onViewUser }: AdminPanelProps) {
                       </>
                     ) : (
                       <div className="flex items-center gap-2">
-                        <button 
-                          onClick={() => onViewUser(user.id)}
+                        <button
+                          onClick={() => onViewUser(user?.id)}
                           className="px-4 py-2 rounded-xl bg-primary/10 text-primary text-[10px] font-black uppercase tracking-widest hover:bg-primary hover:text-white transition-all shadow-xl opacity-0 group-hover:opacity-100 flex items-center gap-2"
                         >
                           <Zap className="w-3.5 h-3.5" />
@@ -375,11 +393,11 @@ export function AdminPanel({ onViewUser }: AdminPanelProps) {
                         </button>
                         <button
                           onClick={() => {
-                            setEditingUser(user.id);
+                            setEditingUser(user?.id);
                             setEditForm({
-                              plan: user.plan,
-                              accountStatus: user.accountStatus,
-                              role: user.role || 'user'
+                              plan: user?.plan,
+                              accountStatus: user?.accountStatus,
+                              role: user?.role || 'user'
                             });
                           }}
                           className="p-2.5 rounded-xl bg-white/5 text-white/40 opacity-0 group-hover:opacity-100 hover:bg-white/10 transition-all shadow-xl"
@@ -416,7 +434,18 @@ export function AdminPanel({ onViewUser }: AdminPanelProps) {
                   </div>
                 </td>
               </tr>
-            ))}
+                );
+              } catch (rowErr) {
+                console.error(`[AdminPanel] Row render failed for user ${user?.id}:`, rowErr);
+                return (
+                  <tr key={user?.id || 'error-row'}>
+                    <td colSpan={5} className="px-8 py-4">
+                      <span className="text-[10px] font-bold text-red-500 uppercase tracking-widest">Render Error — check console</span>
+                    </td>
+                  </tr>
+                );
+              }
+            })}
           </tbody>
         </table>
       </motion.div>
