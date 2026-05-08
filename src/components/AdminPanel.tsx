@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, ReactNode } from 'react';
 import { db, auth, handleFirestoreError, OperationType } from '../lib/firebase';
 import { collection, onSnapshot, doc, updateDoc, deleteDoc, query, orderBy, limit, Timestamp, serverTimestamp } from 'firebase/firestore';
 import {
@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import AnalyticsDashboard from './AnalyticsDashboard';
+import { CDKeyManager } from './CDKeyManager';
 
 interface AdminPanelProps {
   onViewUser: (userId: string) => void;
@@ -46,7 +47,7 @@ function formatClassName(val: any): string {
   return trimmed.split(' ').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
 }
 
-function StatCard({ icon, label, value, accent }: { icon: React.ReactNode; label: string; value: string | number; accent: string }) {
+function StatCard({ icon, label, value, accent }: { icon: ReactNode; label: string; value: string | number; accent: string }) {
   return (
     <div className="bg-white/[0.02] border border-white/[0.04] rounded-xl px-4 py-3 flex items-center gap-3">
       <div className={`w-8 h-8 rounded-lg bg-white/[0.03] border border-white/[0.05] flex items-center justify-center ${accent}`}>
@@ -560,7 +561,7 @@ export function AdminPanel({ onViewUser }: AdminPanelProps) {
                                       <ExternalLink className="w-3.5 h-3.5" />
                                     </button>
                                     <button
-                                      onClick={() => handleAdminUpdate(user.id, 'aio')}
+                                      onClick={() => handleDevCheckout(user, 'aio')}
                                       className="p-1.5 rounded-lg bg-primary/10 text-primary hover:bg-primary hover:text-white transition-all"
                                       title="Grant AIO"
                                     >
