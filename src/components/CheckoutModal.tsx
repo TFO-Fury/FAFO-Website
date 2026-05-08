@@ -123,16 +123,11 @@ export function CheckoutModal({ isOpen, onClose, user, userData, cart, total, is
         throw new Error(details);
       }
 
-      const { url: discordUrl, redirectUri } = await res.json();
-      console.log("[Discord] Generated Redirect URI:", redirectUri);
+      const data = await res.json();
+      console.log("[Discord] Generated Redirect URI:", data.redirectUri);
       console.log("[Discord] Make sure this EXACT URL is in your Discord Developer Portal -> OAuth2 -> Redirects");
-      
-      const width = 500;
-      const height = 750;
-      const left = window.screenX + (window.outerWidth - width) / 2;
-      const top = window.screenY + (window.outerHeight - height) / 2;
-      
-      window.open(url, 'discord_auth', `width=${width},height=${height},left=${left},top=${top}`);
+
+      window.location.href = data.url;
     } catch (err: any) {
       console.error("[Discord Checkout Error]", err);
       const is404 = err.message.includes('404');
