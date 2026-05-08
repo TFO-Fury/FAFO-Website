@@ -103,6 +103,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     await batch.commit();
     console.log(`[API] Activation committed. userId=${userId}, previousPlan=${existingPlan}, previousSelectedClass=${existingSelectedClass || '(none)'}, updatedPlan=${plan}, updatedSelectedClass=${selectedClass || '(none)'}`);
 
+    // Verify key is readable before GitHub sync
+    console.log(`[API] Verifying key ${key} is readable in Firestore...`);
+    const keyVerify = await firestore.collection('cd_keys').doc(key).get();
+    console.log(`[API] Post-commit key read: exists=${keyVerify.exists}, id=${keyVerify.id}, data=${JSON.stringify(keyVerify.data())}`);
+
     syncDiscord(userId, plan).catch(err => console.error('[Discord Sync Error]', err));
     const githubResult = await syncKeyToGithub(userId, key);
     console.log(`[GitHubSync] Activation trigger result:`, githubResult);
