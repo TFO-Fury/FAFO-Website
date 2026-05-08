@@ -9,7 +9,7 @@ import { getFirestore, FieldValue, Timestamp } from 'firebase-admin/firestore';
 import type { Firestore } from 'firebase-admin/firestore';
 import { nanoid } from 'nanoid';
 import { Octokit } from 'octokit';
-import { syncKeyToGithub, removeKeyFromGithub } from './api/_lib/github.js';
+import { triggerLicenseSync, removeKeyFromGithub } from './api/_lib/github.js';
 
 // Load config using readFileSync for better reliability in production
 const firebaseConfig = JSON.parse(
@@ -382,10 +382,9 @@ async function startServer() {
       let githubResult;
       let githubSyncFailed = false;
       try {
-        githubResult = await syncKeyToGithub(userId, key);
-        console.log(`[GitHubSync] Activation trigger result:`, githubResult);
+        githubResult = await triggerLicenseSync(userId, 'legacy-activation', key);
       } catch (syncErr: any) {
-        console.error(`[GitHubSync] CRITICAL: syncKeyToGithub threw unexpectedly. This should never happen. Error:`, syncErr);
+        console.error(`[LicenseSync] CRITICAL: triggerLicenseSync threw unexpectedly. This should never happen. Error:`, syncErr);
         githubResult = { success: false, error: syncErr.message || 'Unexpected GitHub sync crash' };
         githubSyncFailed = true;
       }
@@ -409,13 +408,25 @@ async function startServer() {
     const { keyId } = req.body;
     try {
       const firestore = await getDb();
+      const keyDoc = await firestore.collection('cd_keys').doc(keyId).get();
+      const previousUserId = keyDoc.exists ? keyDoc.data()?.userId : null;
+
       await firestore.collection('cd_keys').doc(keyId).update({
         status: 'inactive',
         updatedAt: FieldValue.serverTimestamp()
       });
+
       removeKeyFromGithub(keyId).then(result => {
         console.log(`[GitHubSync] Deactivation trigger result:`, result);
       }).catch(err => console.error('[GitHubSync] Deactivation trigger error:', err));
+
+      // Re-sync remaining entitlements for the user whose key was deactivated
+      if (previousUserId) {
+        triggerLicenseSync(previousUserId, 'legacy-deactivation').then(result => {
+          console.log(`[LicenseSync] Post-deactivation sync result:`, result);
+        }).catch(err => console.error('[LicenseSync] Post-deactivation sync error:', err));
+      }
+
       res.json({ success: true });
     } catch (err: any) {
       console.error("[Deactivation Error]", err);

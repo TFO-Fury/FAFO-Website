@@ -3,7 +3,7 @@ import { readJsonBody } from '../_lib/body.js';
 import { getDb, FieldValue, Timestamp } from '../_lib/firebase-admin.js';
 import { syncDiscord } from '../_lib/discord.js';
 import { requireAdmin } from '../_lib/auth.js';
-import { syncKeyToGithub } from '../_lib/github.js';
+import { triggerLicenseSync } from '../_lib/github.js';
 import { normalizeEntitlements } from '../_lib/entitlements.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -73,7 +73,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     await firestore.collection('users').doc(userId).set(updatePayload, { merge: true });
 
     const discordResult = await syncDiscord(userId, planType);
-    const githubResult = await syncKeyToGithub(userId);
+    const githubResult = await triggerLicenseSync(userId, 'fake-checkout');
 
     return res.status(200).json({
       success: true,

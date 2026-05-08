@@ -2,7 +2,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { readJsonBody } from '../../_lib/body.js';
 import { getDb, FieldValue } from '../../_lib/firebase-admin.js';
 import { requireAdmin } from '../../_lib/auth.js';
-import { syncKeyToGithub } from '../../_lib/github.js';
+import { triggerLicenseSync } from '../../_lib/github.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
@@ -48,7 +48,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       updates.classEntitlements !== undefined;
     let githubResult = null;
     if (needsSync) {
-      githubResult = await syncKeyToGithub(userId);
+      githubResult = await triggerLicenseSync(userId, 'admin-update');
     }
 
     return res.status(200).json({ success: true, githubSync: githubResult });

@@ -102,6 +102,17 @@ export function CDKeyManager({ userId, keys, isAdmin }: CDKeyManagerProps) {
       await deleteDoc(doc(db, 'cd_keys', keyId));
       console.log(`[CDKeyManager] Successfully removed: ${keyId}`);
       setConfirmDeleteId(null);
+      // Trigger license sync after key removal
+      fetch('/api/sync-license', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId })
+      }).then(async r => {
+        const data = await r.json().catch(() => ({}));
+        console.log('[CDKeyManager] License sync after removal:', data);
+      }).catch(err => {
+        console.error('[CDKeyManager] License sync after removal failed:', err);
+      });
     } catch (err: any) {
       console.error(`[CDKeyManager] Remove failed:`, err);
       try {

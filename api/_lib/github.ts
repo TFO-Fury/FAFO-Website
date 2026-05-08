@@ -290,6 +290,25 @@ export async function syncKeyToGithub(
   }
 }
 
+export async function triggerLicenseSync(
+  userId: string,
+  source: string = 'unknown',
+  knownKey?: string
+): Promise<{
+  success: boolean;
+  path?: string;
+  sha?: string;
+  error?: string;
+  githubStatus?: number;
+  githubResponse?: any;
+  selectedKey?: string;
+}> {
+  console.log(`[LicenseSync] Trigger source: ${source}, userId: ${userId}, knownKey: ${knownKey || '(query)'}`);
+  const result = await syncKeyToGithub(userId, knownKey);
+  console.log(`[LicenseSync] Result from ${source}: success=${result.success}${result.error ? `, error=${result.error}` : ''}${result.sha ? `, sha=${result.sha}` : ''}${result.path ? `, path=${result.path}` : ''}`);
+  return result;
+}
+
 export async function removeKeyFromGithub(key: string): Promise<{ success: boolean; path: string; error?: string }> {
   if (!GITHUB_TOKEN || !GITHUB_OWNER || !GITHUB_REPO) {
     console.log('[GitHubSync] Missing GitHub credentials, skipping removal');

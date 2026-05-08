@@ -129,6 +129,19 @@ export function CheckoutModal({ isOpen, onClose, user, userData, cart, total, is
       }).then(() => console.log("[CheckoutModal] Backend notified"))
         .catch(err => console.error("[CheckoutModal] Backend notification error:", err));
 
+      // 4. Trigger GitHub license sync
+      try {
+        const syncRes = await fetch('/api/sync-license', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: user.uid })
+        });
+        const syncData = await syncRes.json().catch(() => ({}));
+        console.log('[CheckoutModal] License sync result:', syncData);
+      } catch (syncErr) {
+        console.error('[CheckoutModal] License sync failed (non-critical):', syncErr);
+      }
+
       console.log("[CheckoutModal] Transitioning to success step");
       setStep('success');
     } catch (err: any) {

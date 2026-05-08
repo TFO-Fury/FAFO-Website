@@ -2,7 +2,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { readJsonBody } from '../_lib/body.js';
 import { getDb, FieldValue, Timestamp } from '../_lib/firebase-admin.js';
 import { syncDiscord } from '../_lib/discord.js';
-import { syncKeyToGithub } from '../_lib/github.js';
+import { triggerLicenseSync } from '../_lib/github.js';
 import { normalizeEntitlements, timestampToDate } from '../_lib/entitlements.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -158,10 +158,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     let githubResult;
     let githubSyncFailed = false;
     try {
-      githubResult = await syncKeyToGithub(userId, key);
-      console.log(`[GitHubSync] Activation trigger result:`, githubResult);
+      githubResult = await triggerLicenseSync(userId, 'activation', key);
     } catch (syncErr: any) {
-      console.error(`[GitHubSync] CRITICAL: syncKeyToGithub threw unexpectedly. This should never happen. Error:`, syncErr);
+      console.error(`[LicenseSync] CRITICAL: triggerLicenseSync threw unexpectedly. This should never happen. Error:`, syncErr);
       githubResult = { success: false, error: syncErr.message || 'Unexpected GitHub sync crash' };
       githubSyncFailed = true;
     }

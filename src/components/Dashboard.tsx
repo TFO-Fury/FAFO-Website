@@ -192,11 +192,24 @@ export function Dashboard({ onUpgrade, targetUserId }: DashboardProps) {
   const handleRemoveKey = async (keyId: string) => {
     if (!confirm("Remove this key from user?")) return;
     try {
-      await updateDoc(doc(db, 'cd_keys', keyId), { 
-        userId: null, 
+      await updateDoc(doc(db, 'cd_keys', keyId), {
+        userId: null,
         status: 'unused',
         updatedAt: new Date()
       });
+      // Trigger license sync to reflect removed key
+      if (currentUid) {
+        fetch('/api/sync-license', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: currentUid })
+        }).then(async r => {
+          const data = await r.json().catch(() => ({}));
+          console.log('[Dashboard] License sync after key removal:', data);
+        }).catch(err => {
+          console.error('[Dashboard] License sync after key removal failed:', err);
+        });
+      }
     } catch (err) {
       alert("Failed to remove key.");
     }
