@@ -183,12 +183,8 @@ export function AdminPanel({ onViewUser }: AdminPanelProps) {
   try {
     filteredUsers = users.filter(user => {
       if (!user) return false;
-      const userKeys = allKeys
-        .filter(k => k && k.userId === user.id)
-        .map(k => (k.key ?? k.id ?? '').toLowerCase());
       const matchesSearch = (user.email || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-                           (user.discordId || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-                           userKeys.some(k => k.includes(searchTerm.toLowerCase()));
+                           (user.discordId || '').toLowerCase().includes(searchTerm.toLowerCase());
       const matchesPlan = filterPlan === 'all' || user.plan === filterPlan;
       const matchesStatus = filterStatus === 'all' || user.accountStatus === filterStatus;
       return matchesSearch && matchesPlan && matchesStatus;
@@ -238,7 +234,7 @@ export function AdminPanel({ onViewUser }: AdminPanelProps) {
           <StatCard icon={<Zap className="w-3.5 h-3.5" />} label="Active Subs" value={users.filter(u => u.accountStatus === 'active').length} accent="text-orange-500" />
         </div>
 
-        {activeTab !== 'users' && activeTab !== 'orders' && (
+        {activeTab !== 'users' && (
           <AnalyticsDashboard />
         )}
 

@@ -165,6 +165,7 @@ export default function AnalyticsDashboard() {
               <thead>
                 <tr className="border-b border-white/5">
                   <th className="text-[10px] font-black uppercase tracking-widest text-white/20 py-2">Plan</th>
+                  <th className="text-[10px] font-black uppercase tracking-widest text-white/20 py-2">User</th>
                   <th className="text-[10px] font-black uppercase tracking-widest text-white/20 py-2">Amount</th>
                   <th className="text-[10px] font-black uppercase tracking-widest text-white/20 py-2">Source</th>
                   <th className="text-[10px] font-black uppercase tracking-widest text-white/20 py-2">Status</th>
@@ -175,6 +176,10 @@ export default function AnalyticsDashboard() {
                 {orders.slice(0, 20).map((o: any) => (
                   <tr key={o.id} className="hover:bg-white/[0.01] transition-colors">
                     <td className="py-2 text-xs font-bold text-white/60 uppercase">{o.plan}</td>
+                    <td className="py-2">
+                      <div className="text-xs font-bold text-white/80">{o.email || '—'}</div>
+                      <div className="text-[9px] font-mono text-white/20 truncate max-w-[140px]">{o.userId || '—'}</div>
+                    </td>
                     <td className="py-2 text-xs font-bold text-white/60 tabular-nums">
                       {o.excludedFromRevenue ? (
                         <span className="text-white/20 line-through">${o.amount}</span>

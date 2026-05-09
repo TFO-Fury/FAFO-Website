@@ -80,9 +80,9 @@ export function Dashboard({ onUpgrade, targetUserId }: DashboardProps) {
       setLoading(false);
     });
 
-    const purchasesPath = 'purchases';
+    const purchasesPath = 'orders';
     const purchasesQuery = query(
-      collection(db, 'purchases'), 
+      collection(db, 'orders'),
       where('userId', '==', currentUid),
       orderBy('createdAt', 'desc')
     );
@@ -583,7 +583,7 @@ export function Dashboard({ onUpgrade, targetUserId }: DashboardProps) {
                           <span className="text-[10px] font-bold text-white/30 tabular-nums">{typeof order.createdAt?.toDate === 'function' ? order.createdAt.toDate().toLocaleDateString() : 'N/A'}</span>
                         </td>
                         <td className="px-8 py-6">
-                          <div className={`w-2 h-2 rounded-full ${order.status === 'completed' ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.5)]' : 'bg-orange-500 shadow-[0_0_8px_rgba(249,115,22,0.5)]'}`} />
+                          <div className={`w-2 h-2 rounded-full ${order.paymentStatus === 'completed' ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.5)]' : 'bg-orange-500 shadow-[0_0_8px_rgba(249,115,22,0.5)]'}`} />
                         </td>
                       </tr>
                     ))
