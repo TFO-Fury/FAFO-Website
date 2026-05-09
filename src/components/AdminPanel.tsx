@@ -187,6 +187,7 @@ export function AdminPanel({ onViewUser }: AdminPanelProps) {
 
   const handleDisableAction = async (targetUser: any, action: 'disable' | 'enable') => {
     try {
+      setActionLoading(true);
       const currentUser = auth.currentUser;
       if (!currentUser) throw new Error('Not authenticated');
       const token = await currentUser.getIdToken(true);
@@ -203,12 +204,15 @@ export function AdminPanel({ onViewUser }: AdminPanelProps) {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
 
-      console.log(`[Admin] ${action}d user ${targetUser.id}`);
+      console.log(`[Admin] ${action}d user ${targetUser.id}`, data);
+      alert(`User ${action}d successfully. ${action === 'disable' ? `Revoked ${data.keysRevoked || 0} CD keys.` : ''}`);
       setModalUser(null);
       setModalType(null);
     } catch (err: any) {
       console.error(`[Admin] ${action} user error:`, err);
-      alert(`Failed to ${action} user: ${err.message}`);
+      setModalError(err.message || `Failed to ${action} user`);
+    } finally {
+      setActionLoading(false);
     }
   };
 
@@ -237,7 +241,8 @@ export function AdminPanel({ onViewUser }: AdminPanelProps) {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
 
-      console.log(`[Admin] Deleted user ${targetUser.id}`);
+      console.log(`[Admin] Deleted user ${targetUser.id}`, data);
+      alert(`User deleted successfully. Removed ${data.ordersDeleted || 0} orders, ${data.purchasesDeleted || 0} purchases, ${data.keysDeleted || 0} keys.`);
       setModalUser(null);
       setModalType(null);
       setDeleteConfirmText('');
@@ -700,8 +705,10 @@ export function AdminPanel({ onViewUser }: AdminPanelProps) {
                                     )}
                                     <button
                                       onClick={() => {
-                                        console.log('[Delete User] button clicked');
-                                        alert('DELETE BUTTON WORKS');
+                                        setModalUser(user);
+                                        setModalType('delete');
+                                        setDeleteConfirmText('');
+                                        setModalError(null);
                                       }}
                                       className="p-1.5 rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white transition-all"
                                       title="Delete User"
@@ -784,11 +791,7 @@ export function AdminPanel({ onViewUser }: AdminPanelProps) {
                       onClick={() => {
                         console.log('[Delete Modal] confirm clicked');
                         if (modalType === 'delete') {
-                          if (deleteConfirmText.trim().toUpperCase() !== 'DELETE') {
-                            alert('You must type DELETE to confirm');
-                            return;
-                          }
-                          alert('PERMANENT DELETE CLICKED');
+                          handleDeleteAction(modalUser);
                         } else {
                           handleDisableAction(modalUser, modalType);
                         }
@@ -799,7 +802,9 @@ export function AdminPanel({ onViewUser }: AdminPanelProps) {
                         'bg-green-500 hover:bg-green-600'
                       }`}
                     >
-                      {actionLoading ? 'Deleting...' : modalType === 'delete' ? 'Permanently Delete' : modalType === 'disable' ? 'Disable User' : 'Enable User'}
+                      {actionLoading
+                        ? (modalType === 'delete' ? 'Deleting...' : modalType === 'disable' ? 'Disabling...' : 'Enabling...')
+                        : (modalType === 'delete' ? 'Permanently Delete' : modalType === 'disable' ? 'Disable User' : 'Enable User')}
                     </button>
                   </div>
                 </div>
