@@ -92,7 +92,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         updatedAt: FieldValue.serverTimestamp(),
         // AIO fully replaces single-class entitlements
         classEntitlements: FieldValue.delete(),
-        ...(normalized.migrated || userData?.selectedClass ? { selectedClass: FieldValue.delete() } : {})
+        ...(normalized.migrated || existingUserData?.selectedClass ? { selectedClass: FieldValue.delete() } : {})
       }, { merge: true });
       console.log(`[API] AIO/Trial activation: setting aioExpires=${expirationDate.toISOString()}, cleared classEntitlements`);
     } else if (plan === 'single' && reqClassName) {
