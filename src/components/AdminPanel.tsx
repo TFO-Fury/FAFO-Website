@@ -76,6 +76,7 @@ export function AdminPanel({ onViewUser }: AdminPanelProps) {
   const [modalType, setModalType] = useState<'disable' | 'enable' | 'delete' | null>(null);
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
   const [actionLoading, setActionLoading] = useState(false);
+  const [modalError, setModalError] = useState<string | null>(null);
 
   useEffect(() => {
     // Listen to users
@@ -212,10 +213,12 @@ export function AdminPanel({ onViewUser }: AdminPanelProps) {
   };
 
   const handleDeleteAction = async (targetUser: any) => {
-    if (deleteConfirmText !== 'DELETE') {
-      alert('You must type DELETE exactly to confirm permanent deletion.');
+    const confirmation = deleteConfirmText.trim().toUpperCase();
+    if (confirmation !== 'DELETE') {
+      setModalError('You must type DELETE exactly to confirm permanent deletion.');
       return;
     }
+    setModalError(null);
     try {
       setActionLoading(true);
       const currentUser = auth.currentUser;
@@ -238,9 +241,10 @@ export function AdminPanel({ onViewUser }: AdminPanelProps) {
       setModalUser(null);
       setModalType(null);
       setDeleteConfirmText('');
+      setModalError(null);
     } catch (err: any) {
       console.error('[Admin] Delete user error:', err);
-      alert(`Failed to delete user: ${err.message}`);
+      setModalError(err.message || 'Failed to delete user');
     } finally {
       setActionLoading(false);
     }
@@ -674,6 +678,7 @@ export function AdminPanel({ onViewUser }: AdminPanelProps) {
                                         onClick={() => {
                                           setModalUser(user);
                                           setModalType('enable');
+                                          setModalError(null);
                                         }}
                                         className="p-1.5 rounded-lg bg-green-500/10 text-green-500 hover:bg-green-500 hover:text-white transition-all"
                                         title="Enable User"
@@ -685,6 +690,7 @@ export function AdminPanel({ onViewUser }: AdminPanelProps) {
                                         onClick={() => {
                                           setModalUser(user);
                                           setModalType('disable');
+                                          setModalError(null);
                                         }}
                                         className="p-1.5 rounded-lg bg-yellow-500/10 text-yellow-500 hover:bg-yellow-500 hover:text-white transition-all"
                                         title="Disable User"
@@ -694,9 +700,8 @@ export function AdminPanel({ onViewUser }: AdminPanelProps) {
                                     )}
                                     <button
                                       onClick={() => {
-                                        setModalUser(user);
-                                        setModalType('delete');
-                                        setDeleteConfirmText('');
+                                        console.log('[Delete User] button clicked');
+                                        alert('DELETE BUTTON WORKS');
                                       }}
                                       className="p-1.5 rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white transition-all"
                                       title="Delete User"
@@ -730,7 +735,7 @@ export function AdminPanel({ onViewUser }: AdminPanelProps) {
             {/* Disable/Enable/Delete Confirmation Modal */}
             {modalType && modalUser && (
               <div className="fixed inset-0 z-[200] flex items-center justify-center p-6">
-                <div className="absolute inset-0 bg-black/80 backdrop-blur-md" onClick={() => { setModalUser(null); setModalType(null); setDeleteConfirmText(''); }} />
+                <div className="absolute inset-0 bg-black/80 backdrop-blur-md" onClick={() => { setModalUser(null); setModalType(null); setDeleteConfirmText(''); setModalError(null); }} />
                 <div className="relative w-full max-w-md bg-surface-dark border border-white/10 rounded-[32px] overflow-hidden shadow-2xl flex flex-col pt-10 pb-8 px-8 space-y-6">
                   <div className="text-center space-y-2">
                     <h2 className="text-xl font-black font-display uppercase tracking-widest italic text-white">
@@ -751,25 +756,39 @@ export function AdminPanel({ onViewUser }: AdminPanelProps) {
                       <input
                         type="text"
                         value={deleteConfirmText}
-                        onChange={(e) => setDeleteConfirmText(e.target.value)}
+                        onChange={(e) => {
+                          setDeleteConfirmText(e.target.value);
+                          if (modalError) setModalError(null);
+                        }}
                         placeholder="DELETE"
                         className="w-full h-12 px-4 rounded-xl bg-background border border-white/10 text-white font-bold text-sm uppercase tracking-widest outline-none focus:border-red-500 transition-colors"
                       />
                     </div>
                   )}
 
+                  {modalError && (
+                    <div className="px-4 py-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-500 text-xs font-bold text-center">
+                      {modalError}
+                    </div>
+                  )}
+
                   <div className="flex items-center gap-3">
                     <button
-                      onClick={() => { setModalUser(null); setModalType(null); setDeleteConfirmText(''); }}
+                      onClick={() => { setModalUser(null); setModalType(null); setDeleteConfirmText(''); setModalError(null); }}
                       className="flex-1 h-12 rounded-xl bg-white/5 border border-white/10 text-white text-xs font-black uppercase tracking-widest hover:bg-white/10 transition-all"
                     >
                       Cancel
                     </button>
                     <button
-                      disabled={actionLoading || (modalType === 'delete' && deleteConfirmText !== 'DELETE')}
+                      disabled={actionLoading}
                       onClick={() => {
+                        console.log('[Delete Modal] confirm clicked');
                         if (modalType === 'delete') {
-                          handleDeleteAction(modalUser);
+                          if (deleteConfirmText.trim().toUpperCase() !== 'DELETE') {
+                            alert('You must type DELETE to confirm');
+                            return;
+                          }
+                          alert('PERMANENT DELETE CLICKED');
                         } else {
                           handleDisableAction(modalUser, modalType);
                         }
@@ -780,7 +799,7 @@ export function AdminPanel({ onViewUser }: AdminPanelProps) {
                         'bg-green-500 hover:bg-green-600'
                       }`}
                     >
-                      {actionLoading ? 'Processing...' : modalType === 'delete' ? 'Permanently Delete' : modalType === 'disable' ? 'Disable User' : 'Enable User'}
+                      {actionLoading ? 'Deleting...' : modalType === 'delete' ? 'Permanently Delete' : modalType === 'disable' ? 'Disable User' : 'Enable User'}
                     </button>
                   </div>
                 </div>
