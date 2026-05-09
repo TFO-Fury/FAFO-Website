@@ -247,7 +247,7 @@ export function AdminPanel({ onViewUser }: AdminPanelProps) {
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/20" />
                   <input
                     type="text"
-                    placeholder="Search email, Discord ID, or key..."
+                    placeholder="Search email or Discord ID..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                     className="h-10 pl-10 pr-4 rounded-lg bg-white/[0.02] border border-white/[0.04] text-sm font-medium focus:ring-2 focus:ring-primary/20 focus:border-primary/20 outline-none transition-all w-full sm:w-72"

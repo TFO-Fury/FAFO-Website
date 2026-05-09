@@ -83,12 +83,17 @@ export function Dashboard({ onUpgrade, targetUserId }: DashboardProps) {
     const purchasesPath = 'orders';
     const purchasesQuery = query(
       collection(db, 'orders'),
-      where('userId', '==', currentUid),
-      orderBy('createdAt', 'desc')
+      where('userId', '==', currentUid)
     );
 
     const unsubPurchases = onSnapshot(purchasesQuery, (snapshot) => {
-      setPurchases(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+      const data = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+      data.sort((a: any, b: any) => {
+        const aTime = a.createdAt?.toDate?.() || new Date(a.createdAt || 0);
+        const bTime = b.createdAt?.toDate?.() || new Date(b.createdAt || 0);
+        return bTime.getTime() - aTime.getTime();
+      });
+      setPurchases(data);
     }, (err) => {
       handleFirestoreError(err, OperationType.LIST, purchasesPath);
     });
