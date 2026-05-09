@@ -75,7 +75,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Create order entry (excluded from revenue)
     await firestore.collection('orders').add({
       userId,
-      email: email || null,
+      email: existingData?.email || email || null,
       plan: planType,
       className: className || null,
       amount: 0,

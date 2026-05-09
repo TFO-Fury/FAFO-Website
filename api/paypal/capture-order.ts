@@ -110,7 +110,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Create order entry
     await firestore.collection('orders').add({
       userId,
-      email: payerEmail || existingData?.email || null,
+      email: existingData?.email || null,
+      paypalEmail: payerEmail || null,
       plan,
       className: className || null,
       amount,

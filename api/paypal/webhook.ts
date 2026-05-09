@@ -121,7 +121,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       await firestore.collection('orders').add({
         userId,
-        email: existingData?.email || resource?.payer?.email_address || null,
+        email: existingData?.email || null,
+        paypalEmail: resource?.payer?.email_address || null,
         plan,
         className: className || null,
         amount: paypalData.amount,

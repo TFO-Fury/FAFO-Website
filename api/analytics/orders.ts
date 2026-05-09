@@ -29,6 +29,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         id: doc.id,
         userId: d.userId,
         email: d.email,
+        userEmail: d.userEmail || null,
         plan: d.plan,
         className: d.className,
         amount: d.amount,

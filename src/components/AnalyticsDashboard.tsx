@@ -177,7 +177,7 @@ export default function AnalyticsDashboard() {
                   <tr key={o.id} className="hover:bg-white/[0.01] transition-colors">
                     <td className="py-2 text-xs font-bold text-white/60 uppercase">{o.plan}</td>
                     <td className="py-2">
-                      <div className="text-xs font-bold text-white/80">{o.email || '—'}</div>
+                      <div className="text-xs font-bold text-white/80">{o.email || o.userEmail || 'Unknown User'}</div>
                       <div className="text-[9px] font-mono text-white/20 truncate max-w-[140px]">{o.userId || '—'}</div>
                     </td>
                     <td className="py-2 text-xs font-bold text-white/60 tabular-nums">
