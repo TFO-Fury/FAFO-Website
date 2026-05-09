@@ -80,23 +80,34 @@ export function Dashboard({ onUpgrade, targetUserId }: DashboardProps) {
       setLoading(false);
     });
 
-    const purchasesPath = 'orders';
-    const purchasesQuery = query(
-      collection(db, 'orders'),
-      where('userId', '==', currentUid)
-    );
+    // Dual collection query: backend writes to 'orders', but Firestore rules
+    // may only allow client reads from 'purchases'. Query both and merge.
+    const rawOrders: any[] = [];
+    const rawPurchases: any[] = [];
 
-    const unsubPurchases = onSnapshot(purchasesQuery, (snapshot) => {
-      const data = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-      data.sort((a: any, b: any) => {
+    const mergeOrders = () => {
+      const merged = [...rawOrders, ...rawPurchases];
+      merged.sort((a: any, b: any) => {
         const aTime = a.createdAt?.toDate?.() || new Date(a.createdAt || 0);
         const bTime = b.createdAt?.toDate?.() || new Date(b.createdAt || 0);
         return bTime.getTime() - aTime.getTime();
       });
-      console.log("[Dashboard] Current UID:", currentUid);
-      console.log("[Dashboard] Orders count:", data.length);
+      console.log("[Dashboard] auth uid:", auth.currentUser?.uid);
+      console.log("[Dashboard] raw orders:", rawOrders);
+      console.log("[Dashboard] raw purchases:", rawPurchases);
+      console.log("[Dashboard] matched user orders:", merged);
+      setPurchases(merged);
+    };
+
+    const ordersQuery = query(
+      collection(db, 'orders'),
+      where('userId', '==', currentUid)
+    );
+    const unsubOrders = onSnapshot(ordersQuery, (snapshot) => {
+      const data = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+      console.log("[Dashboard] orders snapshot count:", data.length);
       data.forEach((o, i) => {
-        console.log(`[Dashboard] Order ${i}:`, {
+        console.log(`[Dashboard] order doc ${i}:`, {
           id: o.id,
           userId: o.userId,
           uid: o.uid,
@@ -112,10 +123,39 @@ export function Dashboard({ onUpgrade, targetUserId }: DashboardProps) {
           createdAt: o.createdAt
         });
       });
-      setPurchases(data);
+      rawOrders.length = 0;
+      rawOrders.push(...data);
+      mergeOrders();
     }, (err) => {
-      console.error("[Dashboard] Order fetch error:", err);
-      handleFirestoreError(err, OperationType.LIST, purchasesPath);
+      console.error("[Dashboard] orders fetch error:", err);
+      handleFirestoreError(err, OperationType.LIST, 'orders');
+    });
+
+    const legacyPurchasesQuery = query(
+      collection(db, 'purchases'),
+      where('userId', '==', currentUid)
+    );
+    const unsubLegacyPurchases = onSnapshot(legacyPurchasesQuery, (snapshot) => {
+      const data = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+      console.log("[Dashboard] purchases snapshot count:", data.length);
+      data.forEach((o, i) => {
+        console.log(`[Dashboard] purchase doc ${i}:`, {
+          id: o.id,
+          userId: o.userId,
+          uid: o.uid,
+          plan: o.plan,
+          type: o.type,
+          amount: o.amount,
+          status: o.status,
+          createdAt: o.createdAt
+        });
+      });
+      rawPurchases.length = 0;
+      rawPurchases.push(...data);
+      mergeOrders();
+    }, (err) => {
+      console.error("[Dashboard] purchases fetch error:", err);
+      handleFirestoreError(err, OperationType.LIST, 'purchases');
     });
 
     const keysQuery = query(
@@ -128,7 +168,8 @@ export function Dashboard({ onUpgrade, targetUserId }: DashboardProps) {
 
     return () => {
       unsubUser();
-      unsubPurchases();
+      unsubOrders();
+      unsubLegacyPurchases();
       unsubKeys();
     };
   }, [currentUid]);
