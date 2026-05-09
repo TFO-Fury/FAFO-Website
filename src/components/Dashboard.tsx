@@ -93,7 +93,25 @@ export function Dashboard({ onUpgrade, targetUserId }: DashboardProps) {
         const bTime = b.createdAt?.toDate?.() || new Date(b.createdAt || 0);
         return bTime.getTime() - aTime.getTime();
       });
-      console.log("Dashboard Orders:", data);
+      console.log("[Dashboard] Current UID:", currentUid);
+      console.log("[Dashboard] Orders count:", data.length);
+      data.forEach((o, i) => {
+        console.log(`[Dashboard] Order ${i}:`, {
+          id: o.id,
+          userId: o.userId,
+          uid: o.uid,
+          customerId: o.customerId,
+          firebaseUid: o.firebaseUid,
+          discordId: o.discordId,
+          plan: o.plan,
+          type: o.type,
+          amount: o.amount,
+          paymentStatus: o.paymentStatus,
+          status: o.status,
+          source: o.source,
+          createdAt: o.createdAt
+        });
+      });
       setPurchases(data);
     }, (err) => {
       console.error("[Dashboard] Order fetch error:", err);

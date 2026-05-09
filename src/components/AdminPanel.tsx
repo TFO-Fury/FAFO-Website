@@ -36,7 +36,8 @@ const TABS = [
   { id: 'orders', label: 'Orders', icon: <CreditCard className="w-3.5 h-3.5" /> },
   { id: 'revenue', label: 'Revenue', icon: <BarChart3 className="w-3.5 h-3.5" /> },
   { id: 'analytics', label: 'Analytics', icon: <TrendingUp className="w-3.5 h-3.5" /> },
-  { id: 'subscriptions', label: 'Subscriptions', icon: <Zap className="w-3.5 h-3.5" /> }
+  { id: 'subscriptions', label: 'Subscriptions', icon: <Zap className="w-3.5 h-3.5" /> },
+  { id: 'cdkeys', label: 'CD Keys', icon: <Ticket className="w-3.5 h-3.5" /> }
 ];
 
 function formatClassName(val: any): string {
@@ -234,8 +235,12 @@ export function AdminPanel({ onViewUser }: AdminPanelProps) {
           <StatCard icon={<Zap className="w-3.5 h-3.5" />} label="Active Subs" value={users.filter(u => u.accountStatus === 'active').length} accent="text-orange-500" />
         </div>
 
-        {activeTab !== 'users' && (
+        {activeTab !== 'users' && activeTab !== 'cdkeys' && (
           <AnalyticsDashboard />
+        )}
+
+        {activeTab === 'cdkeys' && (
+          <CDKeyManager userId={auth.currentUser?.uid || ''} keys={allKeys} isAdmin={true} />
         )}
 
         {activeTab === 'users' && (
@@ -599,10 +604,7 @@ export function AdminPanel({ onViewUser }: AdminPanelProps) {
                     </table>
                   </div>
 
-                  {/* CD Key Manager */}
-                  <div className="mt-8">
-                    <CDKeyManager userId={auth.currentUser?.uid || ''} keys={allKeys} />
-                  </div>
+
                 </>
               )}
             </div>
