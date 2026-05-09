@@ -80,82 +80,31 @@ export function Dashboard({ onUpgrade, targetUserId }: DashboardProps) {
       setLoading(false);
     });
 
-    // Dual collection query: backend writes to 'orders', but Firestore rules
-    // may only allow client reads from 'purchases'. Query both and merge.
-    const rawOrders: any[] = [];
-    const rawPurchases: any[] = [];
+    console.log("[Dashboard] current uid:", auth.currentUser?.uid);
 
-    const mergeOrders = () => {
-      const merged = [...rawOrders, ...rawPurchases];
-      merged.sort((a: any, b: any) => {
-        const aTime = a.createdAt?.toDate?.() || new Date(a.createdAt || 0);
-        const bTime = b.createdAt?.toDate?.() || new Date(b.createdAt || 0);
-        return bTime.getTime() - aTime.getTime();
-      });
-      console.log("[Dashboard] auth uid:", auth.currentUser?.uid);
-      console.log("[Dashboard] raw orders:", rawOrders);
-      console.log("[Dashboard] raw purchases:", rawPurchases);
-      console.log("[Dashboard] matched user orders:", merged);
-      setPurchases(merged);
-    };
-
+    // Backend writes order records to 'orders' collection.
+    // Checkout paths verified:
+    //  - api/paypal/capture-order.ts  → firestore.collection('orders').add({ userId, plan, amount, paymentStatus, createdAt, ... })
+    //  - api/paypal/webhook.ts        → firestore.collection('orders').add({ userId, plan, amount, paymentStatus, createdAt, ... })
+    //  - src/components/CheckoutModal  → addDoc(collection(db, 'orders'), { userId: user.uid, plan, amount, paymentStatus, createdAt, ... })
+    //  - api/dev/fake-checkout.ts     → firestore.collection('orders').add({ userId, plan, amount, paymentStatus, createdAt, ... })
     const ordersQuery = query(
       collection(db, 'orders'),
       where('userId', '==', currentUid)
     );
     const unsubOrders = onSnapshot(ordersQuery, (snapshot) => {
       const data = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-      console.log("[Dashboard] orders snapshot count:", data.length);
-      data.forEach((o, i) => {
-        console.log(`[Dashboard] order doc ${i}:`, {
-          id: o.id,
-          userId: o.userId,
-          uid: o.uid,
-          customerId: o.customerId,
-          firebaseUid: o.firebaseUid,
-          discordId: o.discordId,
-          plan: o.plan,
-          type: o.type,
-          amount: o.amount,
-          paymentStatus: o.paymentStatus,
-          status: o.status,
-          source: o.source,
-          createdAt: o.createdAt
-        });
+      console.log("[Dashboard] raw firestore orders:", data);
+      data.sort((a: any, b: any) => {
+        const aTime = a.createdAt?.toDate?.() || new Date(a.createdAt || 0);
+        const bTime = b.createdAt?.toDate?.() || new Date(b.createdAt || 0);
+        return bTime.getTime() - aTime.getTime();
       });
-      rawOrders.length = 0;
-      rawOrders.push(...data);
-      mergeOrders();
+      console.log("[Dashboard] filtered user orders:", data);
+      setPurchases(data);
     }, (err) => {
       console.error("[Dashboard] orders fetch error:", err);
       handleFirestoreError(err, OperationType.LIST, 'orders');
-    });
-
-    const legacyPurchasesQuery = query(
-      collection(db, 'purchases'),
-      where('userId', '==', currentUid)
-    );
-    const unsubLegacyPurchases = onSnapshot(legacyPurchasesQuery, (snapshot) => {
-      const data = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-      console.log("[Dashboard] purchases snapshot count:", data.length);
-      data.forEach((o, i) => {
-        console.log(`[Dashboard] purchase doc ${i}:`, {
-          id: o.id,
-          userId: o.userId,
-          uid: o.uid,
-          plan: o.plan,
-          type: o.type,
-          amount: o.amount,
-          status: o.status,
-          createdAt: o.createdAt
-        });
-      });
-      rawPurchases.length = 0;
-      rawPurchases.push(...data);
-      mergeOrders();
-    }, (err) => {
-      console.error("[Dashboard] purchases fetch error:", err);
-      handleFirestoreError(err, OperationType.LIST, 'purchases');
     });
 
     const keysQuery = query(
@@ -169,7 +118,6 @@ export function Dashboard({ onUpgrade, targetUserId }: DashboardProps) {
     return () => {
       unsubUser();
       unsubOrders();
-      unsubLegacyPurchases();
       unsubKeys();
     };
   }, [currentUid]);
@@ -638,15 +586,16 @@ export function Dashboard({ onUpgrade, targetUserId }: DashboardProps) {
                     </tr>
                   ) : (
                     purchases.map((order) => {
-                      const entity = order.plan || order.type || 'Unknown';
+                      const entity = order.plan || order.type || order.product || 'Unknown';
                       const value = order.amount ?? order.total ?? order.price ?? 0;
                       const status = order.paymentStatus || order.status || 'pending';
                       let tsDisplay = 'N/A';
                       try {
-                        if (order.createdAt?.toDate) {
-                          tsDisplay = order.createdAt.toDate().toLocaleDateString();
-                        } else if (order.createdAt) {
-                          const d = new Date(order.createdAt);
+                        const ts = order.createdAt || order.timestamp;
+                        if (ts?.toDate) {
+                          tsDisplay = ts.toDate().toLocaleDateString();
+                        } else if (ts) {
+                          const d = new Date(ts);
                           if (!isNaN(d.getTime())) tsDisplay = d.toLocaleDateString();
                         }
                       } catch (e) {}
