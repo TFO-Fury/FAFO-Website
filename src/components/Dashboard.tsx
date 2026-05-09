@@ -93,8 +93,10 @@ export function Dashboard({ onUpgrade, targetUserId }: DashboardProps) {
         const bTime = b.createdAt?.toDate?.() || new Date(b.createdAt || 0);
         return bTime.getTime() - aTime.getTime();
       });
+      console.log("Dashboard Orders:", data);
       setPurchases(data);
     }, (err) => {
+      console.error("[Dashboard] Order fetch error:", err);
       handleFirestoreError(err, OperationType.LIST, purchasesPath);
     });
 
@@ -576,22 +578,36 @@ export function Dashboard({ onUpgrade, targetUserId }: DashboardProps) {
                       <td colSpan={4} className="px-8 py-12 text-center text-[10px] font-black text-white/10 italic uppercase tracking-widest">System log empty</td>
                     </tr>
                   ) : (
-                    purchases.map((order) => (
-                      <tr key={order.id} className="hover:bg-white/[0.02] transition-colors">
-                        <td className="px-8 py-6">
-                          <span className="text-xs font-black text-white uppercase tracking-tight">{order.plan} License</span>
-                        </td>
-                        <td className="px-8 py-6">
-                          <span className="text-xs font-black text-primary italic tracking-widest">${order.amount}</span>
-                        </td>
-                        <td className="px-8 py-6">
-                          <span className="text-[10px] font-bold text-white/30 tabular-nums">{typeof order.createdAt?.toDate === 'function' ? order.createdAt.toDate().toLocaleDateString() : 'N/A'}</span>
-                        </td>
-                        <td className="px-8 py-6">
-                          <div className={`w-2 h-2 rounded-full ${order.paymentStatus === 'completed' ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.5)]' : 'bg-orange-500 shadow-[0_0_8px_rgba(249,115,22,0.5)]'}`} />
-                        </td>
-                      </tr>
-                    ))
+                    purchases.map((order) => {
+                      const entity = order.plan || order.type || 'Unknown';
+                      const value = order.amount ?? order.total ?? order.price ?? 0;
+                      const status = order.paymentStatus || order.status || 'pending';
+                      let tsDisplay = 'N/A';
+                      try {
+                        if (order.createdAt?.toDate) {
+                          tsDisplay = order.createdAt.toDate().toLocaleDateString();
+                        } else if (order.createdAt) {
+                          const d = new Date(order.createdAt);
+                          if (!isNaN(d.getTime())) tsDisplay = d.toLocaleDateString();
+                        }
+                      } catch (e) {}
+                      return (
+                        <tr key={order.id} className="hover:bg-white/[0.02] transition-colors">
+                          <td className="px-8 py-6">
+                            <span className="text-xs font-black text-white uppercase tracking-tight">{entity} License</span>
+                          </td>
+                          <td className="px-8 py-6">
+                            <span className="text-xs font-black text-primary italic tracking-widest">${value}</span>
+                          </td>
+                          <td className="px-8 py-6">
+                            <span className="text-[10px] font-bold text-white/30 tabular-nums">{tsDisplay}</span>
+                          </td>
+                          <td className="px-8 py-6">
+                            <div className={`w-2 h-2 rounded-full ${status === 'completed' || status === 'COMPLETED' || status === 'paid' ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.5)]' : 'bg-orange-500 shadow-[0_0_8px_rgba(249,115,22,0.5)]'}`} />
+                          </td>
+                        </tr>
+                      );
+                    })
                   )}
                 </tbody>
               </table>
