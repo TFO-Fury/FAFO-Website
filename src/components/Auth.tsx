@@ -50,28 +50,12 @@ export function Auth({ onClose }: AuthProps) {
     const userDoc = await getDoc(userRef);
     const role = getRoleForEmail(user.email);
 
-    if (!userDoc.exists()) {
-      console.log(`[Auth] Creating new user profile for ${user.email} (${user.uid})`);
-      const userPath = `users/${user.uid}`;
-      try {
-        await setDoc(userRef, {
-          email: user.email,
-          plan: 'none',
-          accountStatus: 'inactive',
-          discordId: null,
-          isAdmin: false,
-          role,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp()
-        });
-        console.log(`[Auth] User profile created successfully for ${user.uid} with role '${role}'`);
-      } catch (dbErr) {
-        console.error(`[Auth] Failed to create user profile for ${user.uid}:`, dbErr);
-        handleFirestoreError(dbErr, OperationType.CREATE, userPath);
-      }
-    } else {
-      console.log(`[Auth] User profile already exists for ${user.uid}`);
+    if (userDoc.exists()) {
       const data = userDoc.data();
+      if (data?.accountStatus === 'disabled' || data?.accountStatus === 'banned') {
+        await signOut(auth);
+        throw new Error('Account Disabled — Contact Support');
+      }
       if (!data.role) {
         try {
           await setDoc(userRef, { role, updatedAt: serverTimestamp() }, { merge: true });
@@ -80,6 +64,27 @@ export function Auth({ onClose }: AuthProps) {
           console.error(`[Auth] Failed to upgrade role for existing user ${user.uid}:`, e);
         }
       }
+      console.log(`[Auth] User profile already exists for ${user.uid}`);
+      return;
+    }
+
+    console.log(`[Auth] Creating new user profile for ${user.email} (${user.uid})`);
+    const userPath = `users/${user.uid}`;
+    try {
+      await setDoc(userRef, {
+        email: user.email,
+        plan: 'none',
+        accountStatus: 'inactive',
+        discordId: null,
+        isAdmin: false,
+        role,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      });
+      console.log(`[Auth] User profile created successfully for ${user.uid} with role '${role}'`);
+    } catch (dbErr) {
+      console.error(`[Auth] Failed to create user profile for ${user.uid}:`, dbErr);
+      handleFirestoreError(dbErr, OperationType.CREATE, userPath);
     }
   };
 

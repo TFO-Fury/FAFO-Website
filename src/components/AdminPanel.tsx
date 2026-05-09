@@ -72,6 +72,10 @@ export function AdminPanel({ onViewUser }: AdminPanelProps) {
   const [editForm, setEditForm] = useState<any>({});
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('users');
+  const [modalUser, setModalUser] = useState<any>(null);
+  const [modalType, setModalType] = useState<'disable' | 'enable' | 'delete' | null>(null);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [actionLoading, setActionLoading] = useState(false);
 
   useEffect(() => {
     // Listen to users
@@ -180,6 +184,68 @@ export function AdminPanel({ onViewUser }: AdminPanelProps) {
     }
   };
 
+  const handleDisableAction = async (targetUser: any, action: 'disable' | 'enable') => {
+    try {
+      const currentUser = auth.currentUser;
+      if (!currentUser) throw new Error('Not authenticated');
+      const token = await currentUser.getIdToken(true);
+
+      const res = await fetch('/api/admin/disable-user', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ userId: targetUser.id, action })
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+
+      console.log(`[Admin] ${action}d user ${targetUser.id}`);
+      setModalUser(null);
+      setModalType(null);
+    } catch (err: any) {
+      console.error(`[Admin] ${action} user error:`, err);
+      alert(`Failed to ${action} user: ${err.message}`);
+    }
+  };
+
+  const handleDeleteAction = async (targetUser: any) => {
+    if (deleteConfirmText !== 'DELETE') {
+      alert('You must type DELETE exactly to confirm permanent deletion.');
+      return;
+    }
+    try {
+      setActionLoading(true);
+      const currentUser = auth.currentUser;
+      if (!currentUser) throw new Error('Not authenticated');
+      const token = await currentUser.getIdToken(true);
+
+      const res = await fetch('/api/admin/delete-user', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ userId: targetUser.id, confirm: 'DELETE' })
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+
+      console.log(`[Admin] Deleted user ${targetUser.id}`);
+      setModalUser(null);
+      setModalType(null);
+      setDeleteConfirmText('');
+    } catch (err: any) {
+      console.error('[Admin] Delete user error:', err);
+      alert(`Failed to delete user: ${err.message}`);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   let filteredUsers = users;
   try {
     filteredUsers = users.filter(user => {
@@ -276,6 +342,8 @@ export function AdminPanel({ onViewUser }: AdminPanelProps) {
                   <option value="active">Active</option>
                   <option value="inactive">Inactive</option>
                   <option value="expired">Expired</option>
+                  <option value="disabled">Disabled</option>
+                  <option value="banned">Banned</option>
                 </select>
               </div>
               <span className="text-[10px] font-black uppercase tracking-widest text-white/20 flex-shrink-0">
@@ -470,8 +538,24 @@ export function AdminPanel({ onViewUser }: AdminPanelProps) {
                                 </td>
 
                                 {/* Status Column */}
-                                <td className="px-5 py-3 w-[90px]">
+                                <td className="px-5 py-3 w-[100px]">
                                   {(() => {
+                                    if (user?.accountStatus === 'disabled') {
+                                      return (
+                                        <div className="flex items-center gap-1.5">
+                                          <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
+                                          <span className="text-[10px] font-black uppercase tracking-widest text-red-500">Disabled</span>
+                                        </div>
+                                      );
+                                    }
+                                    if (user?.accountStatus === 'banned') {
+                                      return (
+                                        <div className="flex items-center gap-1.5">
+                                          <span className="w-1.5 h-1.5 rounded-full bg-orange-500" />
+                                          <span className="text-[10px] font-black uppercase tracking-widest text-orange-500">Banned</span>
+                                        </div>
+                                      );
+                                    }
                                     const now = new Date();
                                     const legacyExpired = user?.expiresAt && typeof user.expiresAt.toDate === 'function' && user.expiresAt.toDate() < now;
                                     const aioExpired = user?.aioExpires && (() => { const d = user.aioExpires?.toDate ? user.aioExpires.toDate() : new Date(user.aioExpires); return !isNaN(d.getTime()) && d < now; })();
@@ -585,6 +669,40 @@ export function AdminPanel({ onViewUser }: AdminPanelProps) {
                                     >
                                       <Clock className="w-3.5 h-3.5" />
                                     </button>
+                                    {(user?.accountStatus === 'disabled' || user?.accountStatus === 'banned') ? (
+                                      <button
+                                        onClick={() => {
+                                          setModalUser(user);
+                                          setModalType('enable');
+                                        }}
+                                        className="p-1.5 rounded-lg bg-green-500/10 text-green-500 hover:bg-green-500 hover:text-white transition-all"
+                                        title="Enable User"
+                                      >
+                                        <ShieldCheck className="w-3.5 h-3.5" />
+                                      </button>
+                                    ) : (
+                                      <button
+                                        onClick={() => {
+                                          setModalUser(user);
+                                          setModalType('disable');
+                                        }}
+                                        className="p-1.5 rounded-lg bg-yellow-500/10 text-yellow-500 hover:bg-yellow-500 hover:text-white transition-all"
+                                        title="Disable User"
+                                      >
+                                        <Ban className="w-3.5 h-3.5" />
+                                      </button>
+                                    )}
+                                    <button
+                                      onClick={() => {
+                                        setModalUser(user);
+                                        setModalType('delete');
+                                        setDeleteConfirmText('');
+                                      }}
+                                      className="p-1.5 rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white transition-all"
+                                      title="Delete User"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
                                   </div>
                                 </td>
                               </tr>
@@ -608,6 +726,66 @@ export function AdminPanel({ onViewUser }: AdminPanelProps) {
                 </>
               )}
             </div>
+
+            {/* Disable/Enable/Delete Confirmation Modal */}
+            {modalType && modalUser && (
+              <div className="fixed inset-0 z-[200] flex items-center justify-center p-6">
+                <div className="absolute inset-0 bg-black/80 backdrop-blur-md" onClick={() => { setModalUser(null); setModalType(null); setDeleteConfirmText(''); }} />
+                <div className="relative w-full max-w-md bg-surface-dark border border-white/10 rounded-[32px] overflow-hidden shadow-2xl flex flex-col pt-10 pb-8 px-8 space-y-6">
+                  <div className="text-center space-y-2">
+                    <h2 className="text-xl font-black font-display uppercase tracking-widest italic text-white">
+                      {modalType === 'disable' ? 'Disable User' : modalType === 'enable' ? 'Enable User' : 'Delete User'}
+                    </h2>
+                    <p className="text-white/40 text-xs font-medium">
+                      {modalType === 'delete'
+                        ? `Permanently delete ${modalUser.email || modalUser.id}? This cannot be undone.`
+                        : `${modalType === 'disable' ? 'Disable' : 'Enable'} ${modalUser.email || modalUser.id}?`}
+                    </p>
+                  </div>
+
+                  {modalType === 'delete' && (
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-white/40">
+                        Type DELETE to confirm
+                      </label>
+                      <input
+                        type="text"
+                        value={deleteConfirmText}
+                        onChange={(e) => setDeleteConfirmText(e.target.value)}
+                        placeholder="DELETE"
+                        className="w-full h-12 px-4 rounded-xl bg-background border border-white/10 text-white font-bold text-sm uppercase tracking-widest outline-none focus:border-red-500 transition-colors"
+                      />
+                    </div>
+                  )}
+
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={() => { setModalUser(null); setModalType(null); setDeleteConfirmText(''); }}
+                      className="flex-1 h-12 rounded-xl bg-white/5 border border-white/10 text-white text-xs font-black uppercase tracking-widest hover:bg-white/10 transition-all"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      disabled={actionLoading || (modalType === 'delete' && deleteConfirmText !== 'DELETE')}
+                      onClick={() => {
+                        if (modalType === 'delete') {
+                          handleDeleteAction(modalUser);
+                        } else {
+                          handleDisableAction(modalUser, modalType);
+                        }
+                      }}
+                      className={`flex-1 h-12 rounded-xl text-white text-xs font-black uppercase tracking-widest transition-all disabled:opacity-50 ${
+                        modalType === 'delete' ? 'bg-red-500 hover:bg-red-600' :
+                        modalType === 'disable' ? 'bg-yellow-500 hover:bg-yellow-600' :
+                        'bg-green-500 hover:bg-green-600'
+                      }`}
+                    >
+                      {actionLoading ? 'Processing...' : modalType === 'delete' ? 'Permanently Delete' : modalType === 'disable' ? 'Disable User' : 'Enable User'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
       );
     }
