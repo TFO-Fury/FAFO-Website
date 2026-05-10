@@ -2,6 +2,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { readJsonBody } from '../_lib/body.js';
 import { getDb, FieldValue } from '../_lib/firebase-admin.js';
 import { requireAdmin } from '../_lib/auth.js';
+import { triggerLicenseSync, removeKeyFromGithub } from '../_lib/github.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
@@ -64,6 +65,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
       await batch.commit();
 
+      // Remove licenses from GitHub for all user keys
+      const githubRemovals = await Promise.all(
+        keysSnapshot.docs.map(doc => removeKeyFromGithub(doc.id))
+      );
+      console.log(`[AdminDisableUser] GitHub removals:`, githubRemovals.map(r => ({ success: r.success, path: r.path })));
+
       await firestore.collection('admin_audit_log').add({
         adminUid: caller.uid,
         adminEmail: caller.email,
@@ -77,7 +84,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         success: true,
         action: 'disable',
         accountStatus: 'disabled',
-        keysRevoked: keysSnapshot.size
+        keysRevoked: keysSnapshot.size,
+        githubRemovals
       });
     } else {
       const disabledState = userData.disabledState || {};
@@ -96,6 +104,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         updatedAt: now
       });
 
+      // Re-sync GitHub license for restored user
+      const githubResult = await triggerLicenseSync(userId, 'enable');
+      console.log(`[AdminDisableUser] GitHub re-sync on enable:`, githubResult);
+
       await firestore.collection('admin_audit_log').add({
         adminUid: caller.uid,
         adminEmail: caller.email,
@@ -108,7 +120,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json({
         success: true,
         action: 'enable',
-        accountStatus: disabledState.accountStatus || 'active'
+        accountStatus: disabledState.accountStatus || 'active',
+        githubSync: githubResult
       });
     }
   } catch (err: any) {

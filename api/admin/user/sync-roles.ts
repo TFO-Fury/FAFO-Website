@@ -2,6 +2,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { readJsonBody } from '../../_lib/body.js';
 import { getDb } from '../../_lib/firebase-admin.js';
 import { syncDiscord } from '../../_lib/discord.js';
+import { triggerLicenseSync } from '../../_lib/github.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
@@ -21,7 +22,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(404).json({ error: 'User not found' });
     }
     await syncDiscord(userId, userDoc.data()?.plan || 'none');
-    return res.status(200).json({ success: true });
+    const githubResult = await triggerLicenseSync(userId, 'sync-roles');
+    return res.status(200).json({ success: true, githubSync: githubResult });
   } catch (err: any) {
     console.error('[Sync Roles Error]', err);
     return res.status(500).json({ error: 'Sync failed' });

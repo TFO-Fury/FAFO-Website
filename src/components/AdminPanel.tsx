@@ -21,7 +21,8 @@ import {
   CreditCard,
   TrendingUp,
   Hexagon,
-  DollarSign
+  DollarSign,
+  Github
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import AnalyticsDashboard from './AnalyticsDashboard';
@@ -252,6 +253,32 @@ export function AdminPanel({ onViewUser }: AdminPanelProps) {
       setModalError(err.message || 'Failed to delete user');
     } finally {
       setActionLoading(false);
+    }
+  };
+
+  const handleForceGithubSync = async (targetUser: any) => {
+    try {
+      const currentUser = auth.currentUser;
+      if (!currentUser) throw new Error('Not authenticated');
+      const token = await currentUser.getIdToken(true);
+
+      const res = await fetch('/api/sync-license', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ userId: targetUser.id })
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+
+      console.log(`[Admin] Force GitHub sync for ${targetUser.id}:`, data);
+      alert(data.githubSync?.success ? 'GitHub license synced successfully.' : `GitHub sync issue: ${data.githubSync?.error || 'unknown'}`);
+    } catch (err: any) {
+      console.error('[Admin] Force GitHub sync error:', err);
+      alert(`GitHub sync failed: ${err.message}`);
     }
   };
 
@@ -714,6 +741,13 @@ export function AdminPanel({ onViewUser }: AdminPanelProps) {
                                       title="Delete User"
                                     >
                                       <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                    <button
+                                      onClick={() => handleForceGithubSync(user)}
+                                      className="p-1.5 rounded-lg bg-blue-500/10 text-blue-500 hover:bg-blue-500 hover:text-white transition-all"
+                                      title="Force GitHub Sync"
+                                    >
+                                      <Github className="w-3.5 h-3.5" />
                                     </button>
                                   </div>
                                 </td>

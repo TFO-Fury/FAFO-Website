@@ -98,7 +98,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       assignedPlan: planType,
       className: className || null,
       expirationDate: expirationDate.toISOString(),
-      discordSyncResult: discordResult
+      discordSyncResult: discordResult,
+      githubSync: githubResult
     });
   } catch (err: any) {
     console.error('[DevCheckout] Error:', err);

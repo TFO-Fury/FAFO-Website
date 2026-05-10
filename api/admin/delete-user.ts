@@ -3,6 +3,7 @@ import { readJsonBody } from '../_lib/body.js';
 import { getDb, FieldValue } from '../_lib/firebase-admin.js';
 import { getAuth } from 'firebase-admin/auth';
 import { requireAdmin } from '../_lib/auth.js';
+import { removeKeyFromGithub } from '../_lib/github.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
@@ -46,6 +47,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const keysSnapshot = await firestore.collection('cd_keys')
       .where('userId', '==', userId)
       .get();
+
+    // Remove GitHub licenses BEFORE deleting Firestore keys
+    const githubRemovals = await Promise.all(
+      keysSnapshot.docs.map(doc => removeKeyFromGithub(doc.id))
+    );
+    console.log(`[AdminDeleteUser] GitHub removals:`, githubRemovals.map(r => ({ success: r.success, path: r.path })));
+
     const keysBatch = firestore.batch();
     keysSnapshot.docs.forEach(doc => keysBatch.delete(doc.ref));
     await keysBatch.commit();
@@ -70,7 +78,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       deleted: true,
       ordersDeleted: ordersSnapshot.size,
       purchasesDeleted: purchasesSnapshot.size,
-      keysDeleted: keysSnapshot.size
+      keysDeleted: keysSnapshot.size,
+      githubRemovals
     });
   } catch (err: any) {
     console.error('[AdminDeleteUser] Error:', err);
