@@ -31,22 +31,47 @@ export function CheckoutModal({ isOpen, onClose, user, userData, cart, total, is
     try {
       setLoading(true);
       console.log("[CheckoutModal] Determining plan...");
-      
+
       const hasTrial = cart.some(i => i.type === 'trial');
       const plan = hasTrial ? 'trial' : (cart.some(i => i.type === 'aio') ? 'aio' : 'single');
       const singleClassItem = cart.find(i => i.type === 'one-class');
       const className = singleClassItem?.wowClass || null;
 
-      const expirationDate = new Date();
-      // Trial: 3 days, Others: 30 days
       const daysToAdd = plan === 'trial' ? 3 : 30;
-      expirationDate.setDate(expirationDate.getDate() + daysToAdd);
 
-      console.log(`[CheckoutModal] User: ${user.uid}, Plan: ${plan}, Days: ${daysToAdd}, Expires: ${expirationDate}, Class: ${className || 'none'}`);
+      // Fetch existing user data for stacked expiration calculation
+      const userRef = doc(db, 'users', user.uid);
+      const userSnap = await getDoc(userRef);
+      const existingData = userSnap.exists() ? userSnap.data() : null;
+
+      function toDate(val: any): Date | null {
+        if (!val) return null;
+        if (val.toDate && typeof val.toDate === 'function') return val.toDate();
+        if (val instanceof Date) return val;
+        const d = new Date(val);
+        return isNaN(d.getTime()) ? null : d;
+      }
+
+      function stackExpiration(currentExpiration: any, durationDays: number): Date {
+        const now = new Date();
+        const current = toDate(currentExpiration);
+        const base = current && current > now ? current : now;
+        const result = new Date(base);
+        result.setDate(result.getDate() + durationDays);
+        return result;
+      }
+
+      // Stacked expiration: MAX(current, now) + duration
+      const prevAioExp = toDate(existingData?.aioExpires);
+      const aioExpirationDate = stackExpiration(existingData?.aioExpires, daysToAdd);
+
+      const prevClassExp = toDate(existingData?.classEntitlements?.[className]?.expires);
+      const classExpirationDate = stackExpiration(existingData?.classEntitlements?.[className]?.expires, daysToAdd);
+
+      console.log(`[CheckoutModal] User: ${user.uid}, Plan: ${plan}, Days: ${daysToAdd}, prevAio=${prevAioExp?.toISOString() || 'none'}, prevClass=${prevClassExp?.toISOString() || 'none'}, now=${new Date().toISOString()}, newAio=${aioExpirationDate.toISOString()}, newClass=${classExpirationDate.toISOString()}, Class: ${className || 'none'}`);
 
       // 1. Update Profile
       console.log("[CheckoutModal] Updating Firestore profile...");
-      const userRef = doc(db, 'users', user.uid);
       const updateData: any = {
         plan: plan,
         accountStatus: 'active',
@@ -59,22 +84,19 @@ export function CheckoutModal({ isOpen, onClose, user, userData, cart, total, is
 
       if (plan === 'aio' || plan === 'trial') {
         // AIO fully replaces single-class entitlements
-        updateData.aioExpires = expirationDate;
+        updateData.aioExpires = aioExpirationDate;
         updateData.isAio = true;
         updateData.classEntitlements = deleteField();
         updateData.selectedClass = deleteField();
-        console.log(`[CheckoutModal] Setting aioExpires=${expirationDate.toISOString()}, cleared classEntitlements`);
+        console.log(`[CheckoutModal] Setting stacked aioExpires=${aioExpirationDate.toISOString()}, cleared classEntitlements`);
       } else if (plan === 'single' && className) {
         // Single class: merge into classEntitlements without overwriting other classes
         updateData.isAio = false;
-        // Use dot-path merge via update() to avoid overwriting the whole map
-        // Since setDoc with merge:true merges top-level but may replace nested maps,
-        // we do a separate update for classEntitlements after the main setDoc
-        console.log(`[CheckoutModal] Adding classEntitlements.${className} expires=${expirationDate.toISOString()}`);
+        console.log(`[CheckoutModal] Adding stacked classEntitlements.${className} expires=${classExpirationDate.toISOString()}`);
       } else {
         // Generic fallback
-        updateData.expiresAt = expirationDate;
-        console.log(`[CheckoutModal] Setting generic expiresAt=${expirationDate.toISOString()}`);
+        updateData.expiresAt = aioExpirationDate;
+        console.log(`[CheckoutModal] Setting stacked generic expiresAt=${aioExpirationDate.toISOString()}`);
       }
 
       await setDoc(userRef, updateData, { merge: true });
@@ -83,7 +105,7 @@ export function CheckoutModal({ isOpen, onClose, user, userData, cart, total, is
       if (plan === 'single' && className) {
         try {
           await updateDoc(userRef, {
-            [`classEntitlements.${className}.expires`]: expirationDate,
+            [`classEntitlements.${className}.expires`]: classExpirationDate,
             [`classEntitlements.${className}.updatedAt`]: serverTimestamp()
           });
           console.log(`[CheckoutModal] classEntitlements.${className} update SUCCESS`);
@@ -95,7 +117,7 @@ export function CheckoutModal({ isOpen, onClose, user, userData, cart, total, is
           await setDoc(userRef, {
             classEntitlements: {
               ...existing,
-              [className]: { expires: expirationDate, updatedAt: new Date() }
+              [className]: { expires: classExpirationDate, updatedAt: new Date() }
             }
           }, { merge: true });
           console.log(`[CheckoutModal] classEntitlements fallback set SUCCESS`);

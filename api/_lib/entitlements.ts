@@ -20,6 +20,23 @@ export function timestampToDate(ts: any): Date | null {
   return isNaN(d.getTime()) ? null : d;
 }
 
+/**
+ * Calculate stacked expiration: MAX(currentExpiration, now) + durationDays.
+ * If the user still has active time remaining, it extends from that date.
+ * If expired, it extends from now.
+ */
+export function calculateStackedExpiration(
+  currentExpiration: any,
+  durationDays: number
+): Date {
+  const now = new Date();
+  const current = timestampToDate(currentExpiration);
+  const base = current && current > now ? current : now;
+  const result = new Date(base);
+  result.setDate(result.getDate() + durationDays);
+  return result;
+}
+
 export function normalizeEntitlements(userData: any): NormalizedEntitlements {
   let classEntitlements: Record<string, ClassEntitlement> = {};
   let aioExpires: any = null;

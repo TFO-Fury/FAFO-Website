@@ -1,8 +1,9 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { getDb, FieldValue } from '../_lib/firebase-admin.js';
+import { getDb, FieldValue, Timestamp } from '../_lib/firebase-admin.js';
 import { verifyWebhookSignature, capturePayPalOrder } from '../_lib/paypal.js';
 import { triggerLicenseSync } from '../_lib/github.js';
 import { syncDiscord } from '../_lib/discord.js';
+import { calculateStackedExpiration, timestampToDate } from '../_lib/entitlements.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
@@ -93,9 +94,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       const days = plan === 'trial' ? 3 : 30;
-      const expirationDate = new Date();
-      expirationDate.setDate(expirationDate.getDate() + days);
-      const expirationTimestamp = FieldValue.serverTimestamp(); // Use server timestamp
+      const existingClasses = existingData?.classEntitlements || {};
+
+      // Stacked expiration: MAX(current, now) + duration
+      const prevAioExp = timestampToDate(existingData?.aioExpires);
+      const aioExpirationDate = calculateStackedExpiration(existingData?.aioExpires, days);
+      const aioExpirationTimestamp = Timestamp.fromDate(aioExpirationDate);
+
+      const prevClassExp = timestampToDate(existingClasses[className]?.expires);
+      const classExpirationDate = calculateStackedExpiration(existingClasses[className]?.expires, days);
+      const classExpirationTimestamp = Timestamp.fromDate(classExpirationDate);
+
+      console.log(`[PayPalWebhook] duration=${days}d, prevAio=${prevAioExp?.toISOString() || 'none'}, prevClass=${prevClassExp?.toISOString() || 'none'}, now=${new Date().toISOString()}, newAio=${aioExpirationDate.toISOString()}, newClass=${classExpirationDate.toISOString()}`);
 
       const updatePayload: Record<string, any> = {
         plan,
@@ -105,16 +115,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       if (plan === 'aio' || plan === 'trial') {
         updatePayload.isAio = true;
-        updatePayload.aioExpires = expirationTimestamp;
+        updatePayload.aioExpires = aioExpirationTimestamp;
         updatePayload.classEntitlements = FieldValue.delete();
         updatePayload.selectedClass = FieldValue.delete();
+        console.log(`[PayPalWebhook] AIO/Trial stacked for ${userId}, expires=${aioExpirationDate.toISOString()}`);
       } else if (plan === 'single' && className) {
         updatePayload.isAio = false;
-        const existingClasses = existingData?.classEntitlements || {};
         updatePayload.classEntitlements = {
           ...existingClasses,
-          [className]: { expires: expirationTimestamp, updatedAt: FieldValue.serverTimestamp() }
+          [className]: { expires: classExpirationTimestamp, updatedAt: FieldValue.serverTimestamp() }
         };
+        console.log(`[PayPalWebhook] Single class=${className} stacked for ${userId}, expires=${classExpirationDate.toISOString()}`);
       }
 
       await userRef.set(updatePayload, { merge: true });

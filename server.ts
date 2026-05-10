@@ -256,7 +256,7 @@ async function startServer() {
       const existingUserData = userDoc.exists ? userDoc.data() : null;
 
       // Normalize old schema into new entitlements
-      const { normalizeEntitlements } = await import('./api/_lib/entitlements.js');
+      const { normalizeEntitlements, calculateStackedExpiration, timestampToDate } = await import('./api/_lib/entitlements.js');
       const normalized = normalizeEntitlements(existingUserData);
       console.log(`[API] Normalized entitlements before activation: plan=${normalized.plan}, classes=[${Object.keys(normalized.classEntitlements).join(', ')}], aio=${normalized.aioExpires ? 'yes' : 'no'}`);
 
@@ -265,11 +265,27 @@ async function startServer() {
       console.log(`[API] Plan resolution: existing=${normalized.plan}, req=${reqPlan || '(none)'}, resolved=${plan}`);
 
       const days = plan === 'trial' ? 3 : 30;
-      const expirationDate = new Date();
-      expirationDate.setDate(expirationDate.getDate() + days);
-      const expirationTimestamp = Timestamp.fromDate(expirationDate);
 
-      console.log(`[API] Processing key ${key}. Exists: ${keySnap.exists}. Expiration: ${expirationDate.toISOString()}`);
+      // Stacked expiration: MAX(current, now) + duration
+      const prevAioExp = timestampToDate(existingUserData?.aioExpires);
+      const aioExpirationDate = calculateStackedExpiration(existingUserData?.aioExpires, days);
+      const aioExpirationTimestamp = Timestamp.fromDate(aioExpirationDate);
+
+      const prevReqClassExp = timestampToDate(normalized.classEntitlements[reqClassName]?.expires);
+      const reqClassExpirationDate = calculateStackedExpiration(normalized.classEntitlements[reqClassName]?.expires, days);
+      const reqClassExpirationTimestamp = Timestamp.fromDate(reqClassExpirationDate);
+
+      const existingSingleClass = Object.keys(normalized.classEntitlements).length === 1
+        ? Object.keys(normalized.classEntitlements)[0]
+        : null;
+      const prevSingleClassExp = timestampToDate(existingSingleClass ? normalized.classEntitlements[existingSingleClass]?.expires : null);
+      const singleClassExpirationDate = calculateStackedExpiration(
+        existingSingleClass ? normalized.classEntitlements[existingSingleClass]?.expires : null,
+        days
+      );
+      const singleClassExpirationTimestamp = Timestamp.fromDate(singleClassExpirationDate);
+
+      console.log(`[API] Processing key ${key}. Exists: ${keySnap.exists}. duration=${days}d, prevAio=${prevAioExp?.toISOString() || 'none'}, prevReqClass=${prevReqClassExp?.toISOString() || 'none'}, prevSingleClass=${prevSingleClassExp?.toISOString() || 'none'}, now=${new Date().toISOString()}, newAio=${aioExpirationDate.toISOString()}, newReqClass=${reqClassExpirationDate.toISOString()}, newSingleClass=${singleClassExpirationDate.toISOString()}`);
 
       const batch = firestore.batch();
 
@@ -303,7 +319,7 @@ async function startServer() {
           createdAt: FieldValue.serverTimestamp(),
           lastUsedAt: FieldValue.serverTimestamp(),
           updatedAt: FieldValue.serverTimestamp(),
-          expiresAt: expirationTimestamp,
+          expiresAt: (plan === 'single' && reqClassName ? reqClassExpirationTimestamp : plan === 'single' && existingSingleClass ? singleClassExpirationTimestamp : aioExpirationTimestamp),
           ...(reqClassName ? { className: reqClassName } : {})
         });
       }
@@ -315,18 +331,18 @@ async function startServer() {
           plan,
           accountStatus: 'active',
           isAio: true,
-          aioExpires: expirationTimestamp,
+          aioExpires: aioExpirationTimestamp,
           updatedAt: FieldValue.serverTimestamp(),
           // AIO fully replaces single-class entitlements
           classEntitlements: FieldValue.delete(),
           ...(normalized.migrated || existingUserData?.selectedClass ? { selectedClass: FieldValue.delete() } : {})
         }, { merge: true });
-        console.log(`[API] AIO/Trial activation: setting aioExpires=${expirationDate.toISOString()}, cleared classEntitlements`);
+        console.log(`[API] AIO/Trial activation: stacked aioExpires=${aioExpirationDate.toISOString()}, cleared classEntitlements`);
       } else if (plan === 'single' && reqClassName) {
         const classEntitlements = {
           ...normalized.classEntitlements,
           [reqClassName]: {
-            expires: expirationTimestamp,
+            expires: reqClassExpirationTimestamp,
             updatedAt: FieldValue.serverTimestamp()
           }
         };
@@ -338,13 +354,12 @@ async function startServer() {
           updatedAt: FieldValue.serverTimestamp(),
           ...(normalized.migrated ? { selectedClass: FieldValue.delete() } : {})
         }, { merge: true });
-        console.log(`[API] Single-class activation: added/updated class=${reqClassName}, expires=${expirationDate.toISOString()}, totalClasses=${Object.keys(classEntitlements).length}`);
-      } else if (plan === 'single' && Object.keys(normalized.classEntitlements).length === 1) {
-        const existingClass = Object.keys(normalized.classEntitlements)[0];
+        console.log(`[API] Single-class activation: stacked class=${reqClassName}, expires=${reqClassExpirationDate.toISOString()}, totalClasses=${Object.keys(classEntitlements).length}`);
+      } else if (plan === 'single' && existingSingleClass) {
         const classEntitlements = {
           ...normalized.classEntitlements,
-          [existingClass]: {
-            expires: expirationTimestamp,
+          [existingSingleClass]: {
+            expires: singleClassExpirationTimestamp,
             updatedAt: FieldValue.serverTimestamp()
           }
         };
@@ -356,17 +371,17 @@ async function startServer() {
           updatedAt: FieldValue.serverTimestamp(),
           ...(normalized.migrated ? { selectedClass: FieldValue.delete() } : {})
         }, { merge: true });
-        console.log(`[API] Single-class renewal: renewed class=${existingClass}, expires=${expirationDate.toISOString()}`);
+        console.log(`[API] Single-class renewal: stacked class=${existingSingleClass}, expires=${singleClassExpirationDate.toISOString()}`);
       } else {
         batch.set(userRef, {
           plan,
           accountStatus: 'active',
           isAio: plan === 'aio',
-          expiresAt: expirationTimestamp,
+          expiresAt: aioExpirationTimestamp,
           updatedAt: FieldValue.serverTimestamp(),
           ...(normalized.migrated ? { selectedClass: FieldValue.delete() } : {})
         }, { merge: true });
-        console.log(`[API] Generic activation: plan=${plan}, expiresAt=${expirationDate.toISOString()}`);
+        console.log(`[API] Generic activation: plan=${plan}, stacked expiresAt=${aioExpirationDate.toISOString()}`);
       }
 
       await batch.commit();
@@ -395,7 +410,7 @@ async function startServer() {
         githubSyncFailed,
         githubSync: githubResult || { success: false, error: 'No result' },
         plan,
-        expiresAt: expirationDate,
+        expiresAt: (plan === 'single' && reqClassName ? reqClassExpirationDate : plan === 'single' && existingSingleClass ? singleClassExpirationDate : aioExpirationDate).toISOString(),
         className: reqClassName || null
       });
     } catch (err: any) {
