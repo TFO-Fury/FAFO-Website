@@ -190,30 +190,14 @@ export default function App() {
   };
 
   const handleAddAIO = () => {
-    let price = 50;
+    let price = 35;
     let name = "All-In-One Access Plan";
 
     if (user && userData?.plan === 'single' && userData?.updatedAt) {
-      try {
-        const lastBillingDate = userData.updatedAt.toDate();
-        const now = new Date();
-        const diffTime = Math.abs(now.getTime() - lastBillingDate.getTime());
-        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-        
-        // Simple simulation: 30 day month
-        const daysLeft = Math.max(0, 30 - (diffDays % 30));
-        const proportion = daysLeft / 30;
-        
-        // All-In-One (50) - Single (35) = 15 difference
-        const upgradeDiff = 15 * proportion;
-        price = Math.round(upgradeDiff * 100) / 100; // Round to 2 decimals
-        name = "All-In-One Upgrade (Prorated)";
-        
-        console.log(`[Upgrade] Calculated prorated price: ${price} based on ${daysLeft} days remaining.`);
-      } catch (e) {
-        console.warn("[Upgrade] Could not calculate proration accurately, using full difference of $15", e);
-        price = 15;
-      }
+      // AIO (35) - Single (35) = 0 difference, upgrade is free
+      price = 0;
+      name = "All-In-One Upgrade (Prorated)";
+      console.log(`[Upgrade] AIO matches Single price, upgrade is free.`);
     }
 
     addToCart({
@@ -624,7 +608,11 @@ export default function App() {
 
                         <div>
                           <h3 className="text-white/80 font-bold text-xs tracking-widest uppercase italic mb-4">AIO Access</h3>
-                          <p className="text-5xl font-black font-display text-white italic">$50<span className="text-xs">/mo</span></p>
+                          <div className="flex items-baseline gap-2">
+                            <p className="text-5xl font-black font-display text-white italic">$35<span className="text-xs">/mo</span></p>
+                            <p className="text-lg font-bold text-white/30 line-through italic">$50</p>
+                          </div>
+                          <p className="text-primary text-[10px] font-black uppercase tracking-widest mt-2">Limited Time Only</p>
                         </div>
 
                         <ul className="flex-1 space-y-4 pt-4">
