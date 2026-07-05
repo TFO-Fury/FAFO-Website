@@ -185,6 +185,37 @@ export function CheckoutModal({ isOpen, onClose, user, userData, cart, total, is
     }
   };
 
+  const handleFreeUpgrade = async () => {
+    if (!user) {
+      alert("Session expired. Please log in again.");
+      return;
+    }
+    try {
+      setLoading(true);
+      const idToken = await user.getIdToken();
+      const res = await fetch('/api/free-upgrade', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${idToken}`
+        },
+        body: JSON.stringify({ userId: user.uid })
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Free upgrade failed');
+      }
+      console.log('[CheckoutModal] Free upgrade success:', data);
+      setStep('success');
+      onSuccess();
+    } catch (err: any) {
+      console.error('[CheckoutModal] Free upgrade error:', err);
+      alert(`Free upgrade failed: ${err.message || 'Unknown error'}. Please take a screenshot and contact support.`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleDiscordLink = async () => {
     try {
       setIsDiscordLoading(true);
@@ -279,7 +310,15 @@ export function CheckoutModal({ isOpen, onClose, user, userData, cart, total, is
                     {/* Normal users: real PayPal checkout only */}
                     {userData?.role !== 'admin' && userData?.role !== 'owner' ? (
                       <div className="space-y-4">
-                        {(() => {
+                        {total === 0 ? (
+                          <button
+                            disabled={loading}
+                            onClick={handleFreeUpgrade}
+                            className="w-full h-14 rounded-xl bg-primary text-white font-black tracking-widest uppercase text-sm shadow-xl shadow-primary/25 hover:scale-[1.02] active:scale-95 transition-all disabled:opacity-50"
+                          >
+                            {loading ? 'Processing...' : 'Confirm Free Upgrade'}
+                          </button>
+                        ) : (() => {
                           const singleClassItem = cart.find(i => i.type === 'one-class');
                           const plan = cart.some(i => i.type === 'trial')
                             ? 'trial'
@@ -309,7 +348,15 @@ export function CheckoutModal({ isOpen, onClose, user, userData, cart, total, is
                       <>
                         {/* Admin/Owner: real PayPal + DEV TEST options */}
                         <div className="space-y-4">
-                          {(() => {
+                          {total === 0 ? (
+                            <button
+                              disabled={loading}
+                              onClick={handleFreeUpgrade}
+                              className="w-full h-14 rounded-xl bg-primary text-white font-black tracking-widest uppercase text-sm shadow-xl shadow-primary/25 hover:scale-[1.02] active:scale-95 transition-all disabled:opacity-50"
+                            >
+                              {loading ? 'Processing...' : 'Confirm Free Upgrade'}
+                            </button>
+                          ) : (() => {
                             const singleClassItem = cart.find(i => i.type === 'one-class');
                             const plan = cart.some(i => i.type === 'trial')
                               ? 'trial'
