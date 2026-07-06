@@ -538,7 +538,11 @@ export default function App() {
 
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-6xl mx-auto items-stretch">
                       {/* Trial Plan */}
-                      <div className="p-8 rounded-3xl bg-surface-dark border border-white/5 space-y-8 flex flex-col hover:border-primary/20 transition-colors group">
+                      <div className="relative">
+                        <div className="absolute inset-0 z-10 flex items-center justify-center rounded-3xl bg-black/50 backdrop-blur-[1px]">
+                          <X className="w-20 h-20 text-white/70" strokeWidth={2} />
+                        </div>
+                        <div className="p-8 rounded-3xl bg-surface-dark border border-white/5 space-y-8 flex flex-col hover:border-primary/20 transition-colors group opacity-40 pointer-events-none select-none">
                         <div>
                           <div className="flex items-center justify-between mb-4">
                             <h3 className="text-white/40 font-bold text-xs tracking-widest uppercase italic">New Users</h3>
@@ -561,15 +565,20 @@ export default function App() {
 
                         <button
                           onClick={handleAddTrial}
-                          disabled={userData?.trialUsed}
+                          disabled
                           className="w-full h-14 rounded-xl border border-white/10 text-white font-black tracking-widest uppercase text-xs hover:bg-white/5 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
                         >
                           {userData?.trialUsed ? 'Trial Used' : 'Start Trial'}
                         </button>
+                        </div>
                       </div>
 
                       {/* One Class */}
-                      <div className="p-8 rounded-3xl bg-surface-dark border border-white/5 space-y-8 flex flex-col group hover:border-white/10 transition-colors">
+                      <div className="relative">
+                        <div className="absolute inset-0 z-10 flex items-center justify-center rounded-3xl bg-black/50 backdrop-blur-[1px]">
+                          <X className="w-20 h-20 text-white/70" strokeWidth={2} />
+                        </div>
+                        <div className="p-8 rounded-3xl bg-surface-dark border border-white/5 space-y-8 flex flex-col group hover:border-white/10 transition-colors opacity-40 pointer-events-none select-none">
                         <div>
                           <h3 className="text-white/40 font-bold text-xs tracking-widest uppercase italic mb-4">One Class</h3>
                           <p className="text-4xl font-black font-display text-white italic">$35<span className="text-xs">/mo</span></p>
@@ -589,6 +598,7 @@ export default function App() {
                             <select
                               value={selectedClass}
                               onChange={(e) => setSelectedClass(e.target.value)}
+                              disabled
                               className="w-full h-12 pl-4 pr-10 rounded-xl bg-background border border-white/10 text-white font-bold text-xs outline-none appearance-none hover:border-white/20 cursor-pointer transition-all"
                             >
                               <option value="" disabled>Select Class</option>
@@ -598,7 +608,8 @@ export default function App() {
                             </select>
                             <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-3 h-3 text-white/30 pointer-events-none" />
                           </div>
-                          <button onClick={handleAddOneClass} className="w-full h-12 rounded-xl border-2 border-primary/30 text-white font-black tracking-widest uppercase text-xs hover:bg-primary hover:border-primary transition-all active:scale-95">Select Plan</button>
+                          <button onClick={handleAddOneClass} disabled className="w-full h-12 rounded-xl border-2 border-primary/30 text-white font-black tracking-widest uppercase text-xs hover:bg-primary hover:border-primary transition-all active:scale-95">Select Plan</button>
+                        </div>
                         </div>
                       </div>
 
@@ -612,7 +623,7 @@ export default function App() {
                             <p className="text-5xl font-black font-display text-white italic">$35<span className="text-xs">/mo</span></p>
                             <p className="text-lg font-bold text-white/30 line-through italic">$50</p>
                           </div>
-                          <p className="text-primary text-[10px] font-black uppercase tracking-widest mt-2">Limited Time Only</p>
+                          <p className="text-primary text-sm font-black uppercase tracking-widest mt-2">Limited Time Only</p>
                         </div>
 
                         <ul className="flex-1 space-y-4 pt-4">

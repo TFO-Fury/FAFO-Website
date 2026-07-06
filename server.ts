@@ -1,6 +1,5 @@
 import express from "express";
 import cors from "cors";
-import { createServer as createViteServer } from "vite";
 import path from "path";
 import { existsSync, readFileSync } from "fs";
 import dotenv from "dotenv";
@@ -80,7 +79,12 @@ async function getDb() {
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  const isProd = process.env.NODE_ENV === "production";
+  // In prod this Express instance serves the built frontend + API on one port.
+  // In dev, Vite's own dev server (run as a separate process, see package.json)
+  // owns the public port and proxies /api, /auth, /ping here on an internal port.
+  const PUBLIC_PORT = Number(process.env.PORT) || 3000;
+  const PORT = isProd ? PUBLIC_PORT : (Number(process.env.API_PORT) || 3001);
 
   app.use(cors());
   app.use(express.json());
@@ -112,7 +116,7 @@ async function startServer() {
       const host = req.headers['x-forwarded-host'] || req.get('host');
       return `${protocol}://${host}`;
     }
-    return `http://localhost:${PORT}`;
+    return `http://localhost:${PUBLIC_PORT}`;
   };
 
   // --- Diagnostic Middleware ---
@@ -697,24 +701,19 @@ async function startServer() {
     }
   });
 
-  // Vite middleware for development
-  if (process.env.NODE_ENV !== "production") {
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: "spa",
-    });
-    app.use(vite.middlewares);
-  } else {
+  if (isProd) {
     const distPath = path.join(process.cwd(), "dist");
     app.use(express.static(distPath));
     app.get("*", (req, res) => {
       res.sendFile(path.join(distPath, "index.html"));
     });
   }
+  // In dev, this Express instance only serves /api, /auth, /ping — the frontend
+  // and everything else is served by Vite's own dev server on PUBLIC_PORT, which
+  // proxies those paths here (see vite.config.ts).
 
   app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running at http://localhost:${PORT}`);
-    console.log(`Wait: Checking production URL...`);
+    console.log(`API server running at http://localhost:${PORT}${isProd ? '' : ` (internal; public dev server is on http://localhost:${PUBLIC_PORT})`}`);
     console.log(`Callback URL template: ${getAppUrl()}/auth/discord/callback`);
   });
 }
