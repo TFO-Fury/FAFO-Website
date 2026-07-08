@@ -1,7 +1,10 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
 const GITHUB_REPO = 'FAFO-Rotations/FAFO-Rotations';
-const DEFAULT_ASSET = 'FAFO_AIO.lua';
+// The release payload is now the FAFO v2.6 addon package (FAFO.zip), not the old bundled
+// FAFO_AIO.lua. The bare /api/download/latest link (Discord "new build" ping) serves this.
+// Per-spec delivery is supported via ?asset=FAFO-<Spec>.zip once those assets are wired up.
+const DEFAULT_ASSET = 'FAFO.zip';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'GET') {
