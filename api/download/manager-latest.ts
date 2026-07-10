@@ -24,7 +24,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const assetName = (req.query.asset as string) || DEFAULT_ASSET;
 
   try {
-    // 1. Fetch releases and pick the newest manager-* one (GitHub returns newest-first by default).
+    // 1. Fetch releases and pick the newest manager-* one. NOTE: GitHub's /releases list endpoint
+    // does NOT reliably return newest-first (confirmed empirically -- a release published hours
+    // after another one showed up in the MIDDLE of the list, not first), so this sorts by
+    // created_at explicitly rather than trusting API order.
     console.log(`[ManagerDownloadProxy] Fetching releases for ${GITHUB_REPO}`);
     const releasesRes = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/releases?per_page=20`, {
       headers: {
@@ -45,7 +48,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     const releases = await releasesRes.json();
-    const release = (releases as any[]).find(r => typeof r.tag_name === 'string' && r.tag_name.startsWith('manager-'));
+    const release = (releases as any[])
+      .filter(r => typeof r.tag_name === 'string' && r.tag_name.startsWith('manager-'))
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0];
 
     if (!release) {
       console.error('[ManagerDownloadProxy] No manager-* release found');
