@@ -112,10 +112,14 @@ export function AdminPanel({ onViewUser }: AdminPanelProps) {
       const token = await currentUser.getIdToken(true);
 
       // Strip internal UI-only fields and convert date strings to Timestamps
-      const { _newClass, _newClassExpires, ...cleanUpdates } = editForm;
+      const { _newClass, _newClassExpires, _originalAioExpires, ...cleanUpdates } = editForm;
 
-      // Convert aioExpires string -> Timestamp
-      if (cleanUpdates.aioExpires) {
+      // Only touch aioExpires if the admin actually changed it in this session -
+      // otherwise every save (even unrelated ones, like changing role) would
+      // resend it and the backend would wipe the AIO date / class entitlements.
+      if (cleanUpdates.aioExpires === _originalAioExpires) {
+        delete cleanUpdates.aioExpires;
+      } else if (cleanUpdates.aioExpires) {
         cleanUpdates.aioExpires = Timestamp.fromDate(new Date(cleanUpdates.aioExpires));
       }
 
@@ -664,6 +668,7 @@ export function AdminPanel({ onViewUser }: AdminPanelProps) {
                                             accountStatus: user?.accountStatus,
                                             role: user?.role || 'user',
                                             aioExpires: aioDate || null,
+                                            _originalAioExpires: aioDate || null,
                                             classEntitlements
                                           });
                                           setEditingUser(user?.id);

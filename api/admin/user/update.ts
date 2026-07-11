@@ -33,8 +33,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       updatePayload.selectedClass = FieldValue.delete();
     }
 
-    // AIO fully replaces single-class entitlements
-    if (updates.aioExpires !== undefined) {
+    // AIO fully replaces single-class entitlements (only when actually granting an AIO date)
+    if (updates.aioExpires) {
       updatePayload.classEntitlements = FieldValue.delete();
     }
 
