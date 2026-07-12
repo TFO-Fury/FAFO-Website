@@ -16,7 +16,10 @@ const SPEC_TO_CLASS: Record<string, string> = {
   'Hunter-BeastMastery': 'hunter',
   'DeathKnight-Unholy': 'deathknight',
   'Monk-Mistweaver': 'monk',
-  'Paladin-Retribution': 'paladin',
+  'Paladin-Holy': 'paladin',
+  'Ret-Retribution': 'paladin',
+  'Priest-Discipline': 'priest',
+  'Warrior-Arms': 'warrior',
 };
 
 // Simple in-memory rate limiter (per-function-instance, best-effort for serverless) — same shape
