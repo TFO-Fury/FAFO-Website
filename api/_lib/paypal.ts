@@ -31,17 +31,6 @@ async function getAccessToken(): Promise<string> {
   return data.access_token;
 }
 
-// Auth-only handshake used by the temporary /api/dev/paypal-auth-check route.
-// Does not create an order, does not move money.
-export async function checkAuth(): Promise<{ ok: boolean; baseUrl: string; detail: string }> {
-  try {
-    await getAccessToken();
-    return { ok: true, baseUrl: PAYPAL_BASE_URL, detail: 'OAuth handshake succeeded' };
-  } catch (err: any) {
-    return { ok: false, baseUrl: PAYPAL_BASE_URL, detail: err.message || 'Unknown error' };
-  }
-}
-
 export async function createPayPalOrder(amount: string, description: string, customId: string) {
   const accessToken = await getAccessToken();
   const res = await fetch(`${PAYPAL_BASE_URL}/v2/checkout/orders`, {
