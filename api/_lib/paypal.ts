@@ -31,7 +31,7 @@ async function getAccessToken(): Promise<string> {
   return data.access_token;
 }
 
-// Auth-only handshake used by the temporary /api/_debug/paypal-auth-check route.
+// Auth-only handshake used by the temporary /api/dev/paypal-auth-check route.
 // Does not create an order, does not move money.
 export async function checkAuth(): Promise<{ ok: boolean; baseUrl: string; detail: string }> {
   try {
@@ -40,6 +40,41 @@ export async function checkAuth(): Promise<{ ok: boolean; baseUrl: string; detai
   } catch (err: any) {
     return { ok: false, baseUrl: PAYPAL_BASE_URL, detail: err.message || 'Unknown error' };
   }
+}
+
+async function checkAuthAgainst(baseUrl: string): Promise<{ ok: boolean; baseUrl: string; detail: string }> {
+  if (!PAYPAL_CLIENT_ID || !PAYPAL_CLIENT_SECRET) {
+    return { ok: false, baseUrl, detail: 'Missing PayPal credentials' };
+  }
+  const auth = Buffer.from(`${PAYPAL_CLIENT_ID}:${PAYPAL_CLIENT_SECRET}`).toString('base64');
+  try {
+    const res = await fetch(`${baseUrl}/v1/oauth2/token`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Basic ${auth}`,
+        'Content-Type': 'application/x-www-form-urlencoded'
+      },
+      body: 'grant_type=client_credentials'
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      return { ok: false, baseUrl, detail: `${res.status} ${text}` };
+    }
+    return { ok: true, baseUrl, detail: 'OAuth handshake succeeded' };
+  } catch (err: any) {
+    return { ok: false, baseUrl, detail: err.message || 'Unknown error' };
+  }
+}
+
+export async function checkAuthBoth(): Promise<{
+  live: { ok: boolean; baseUrl: string; detail: string };
+  sandbox: { ok: boolean; baseUrl: string; detail: string };
+}> {
+  const [live, sandbox] = await Promise.all([
+    checkAuthAgainst('https://api-m.paypal.com'),
+    checkAuthAgainst('https://api-m.sandbox.paypal.com')
+  ]);
+  return { live, sandbox };
 }
 
 export async function createPayPalOrder(amount: string, description: string, customId: string) {
