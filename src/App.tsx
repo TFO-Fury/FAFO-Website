@@ -20,7 +20,8 @@ import {
   User as UserIcon,
   LayoutDashboard,
   Settings,
-  LogOut
+  LogOut,
+  ShieldAlert
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { auth, db } from "./lib/firebase";
@@ -58,6 +59,25 @@ type CartItem = {
 
 type View = 'landing' | 'dashboard' | 'admin' | 'view-user';
 
+function parseHash(hash: string): { view: View; targetUserId: string | null } {
+  const clean = hash.replace(/^#/, '');
+  if (clean === 'dashboard') return { view: 'dashboard', targetUserId: null };
+  if (clean === 'admin') return { view: 'admin', targetUserId: null };
+  if (clean.startsWith('admin-user/')) {
+    return { view: 'view-user', targetUserId: clean.slice('admin-user/'.length) || null };
+  }
+  return { view: 'landing', targetUserId: null };
+}
+
+function hashForView(view: View, targetUserId: string | null): string {
+  switch (view) {
+    case 'dashboard': return '#dashboard';
+    case 'admin': return '#admin';
+    case 'view-user': return `#admin-user/${targetUserId || ''}`;
+    default: return window.location.pathname;
+  }
+}
+
 export default function App() {
   const [user, setUser] = useState<any>(null);
   const [userData, setUserData] = useState<any>(null);
@@ -69,6 +89,43 @@ export default function App() {
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [showError, setShowError] = useState(false);
   const [lastAdded, setLastAdded] = useState<string | null>(null);
+
+  // Push a new browser history entry for user-initiated navigation, so Back/Forward work.
+  const navigateTo = (next: View, targetUserId: string | null = null) => {
+    setView(next);
+    setAdminTargetUserId(targetUserId);
+    window.history.pushState({ view: next, targetUserId }, '', hashForView(next, targetUserId));
+  };
+
+  // Update the current view without adding a history entry (auth redirects, guards, etc.)
+  const syncView = (next: View, targetUserId: string | null = null) => {
+    setView(next);
+    setAdminTargetUserId(targetUserId);
+    window.history.replaceState({ view: next, targetUserId }, '', hashForView(next, targetUserId));
+  };
+
+  // Seed the view from the URL on load and respond to Back/Forward navigation.
+  useEffect(() => {
+    const initial = parseHash(window.location.hash);
+    setView(initial.view);
+    setAdminTargetUserId(initial.targetUserId);
+    window.history.replaceState(
+      { view: initial.view, targetUserId: initial.targetUserId },
+      '',
+      hashForView(initial.view, initial.targetUserId)
+    );
+
+    const onPopState = (e: PopStateEvent) => {
+      const state = e.state as { view?: View; targetUserId?: string | null } | null;
+      const parsed = state?.view
+        ? { view: state.view, targetUserId: state.targetUserId ?? null }
+        : parseHash(window.location.hash);
+      setView(parsed.view);
+      setAdminTargetUserId(parsed.targetUserId);
+    };
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
 
   // Auth & Profile Listener
   useEffect(() => {
@@ -86,7 +143,7 @@ export default function App() {
         console.log(`[Auth] User signed in: ${authUser.email} (${authUser.uid})`);
       } else {
         setUserData(null);
-        setView('landing');
+        syncView('landing');
       }
     });
     return () => unsubAuth();
@@ -112,7 +169,7 @@ export default function App() {
   useEffect(() => {
     if (view === 'admin' && userData && !isAdmin(userData) && !isOwner(userData)) {
       console.warn(`[Auth] Blocked non-admin access to admin view by ${user?.email || 'unknown'}`);
-      setView('dashboard');
+      syncView('dashboard');
     }
   }, [view, userData, user]);
 
@@ -263,7 +320,7 @@ export default function App() {
       <header className="fixed top-0 left-0 right-0 z-50 border-b border-white/5 bg-background/80 backdrop-blur-md">
         <div className="max-w-7xl mx-auto px-6 md:px-12 h-20 flex items-center justify-between">
           <button 
-            onClick={() => setView('landing')}
+            onClick={() => navigateTo('landing')}
             className="flex items-center gap-3 hover:opacity-80 transition-opacity"
           >
             <div className="text-primary">
@@ -292,7 +349,7 @@ export default function App() {
               }
               return canAccessAdmin && (
                 <button
-                  onClick={() => setView('admin')}
+                  onClick={() => navigateTo('admin')}
                   className={`px-4 py-2 rounded-xl transition-all text-[10px] font-black uppercase tracking-widest border border-white shadow-2xl ${view === 'admin' ? 'bg-primary text-white shadow-lg shadow-primary/20 border-primary' : 'bg-primary/10 text-primary border-primary/20 hover:bg-primary hover:text-white'}`}
                 >
                   {isOwner(userData) ? 'Owner' : 'Admin'}
@@ -324,7 +381,7 @@ export default function App() {
             {user ? (
               <div className="flex items-center gap-2">
                 <button 
-                  onClick={() => setView('dashboard')}
+                  onClick={() => navigateTo('dashboard')}
                   className={`p-2 rounded-xl transition-all ${view === 'dashboard' ? 'bg-primary text-white shadow-lg shadow-primary/20' : 'text-white/40 hover:text-white'}`}
                 >
                   <LayoutDashboard className="w-6 h-6" />
@@ -444,7 +501,7 @@ export default function App() {
         isDiscordLinked={isDiscordLinked}
         onSuccess={() => {
           setCart([]);
-          setView('dashboard');
+          navigateTo('dashboard');
         }}
       />
 
@@ -655,8 +712,7 @@ export default function App() {
                 />
               ) : view === 'admin' ? (
                 <AdminPanel onViewUser={(userId) => {
-                  setAdminTargetUserId(userId);
-                  setView('view-user');
+                  navigateTo('view-user', userId);
                 }} />
               ) : null}
             </>
