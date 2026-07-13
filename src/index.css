@@ -34,6 +34,19 @@
   h1, h2, h3, h4, h5, h6 {
     @apply font-display;
   }
+
+  /* Native <select> dropdown popups don't inherit the page's dark theme -
+     browsers render <option> with their own default (usually white)
+     background, so text styled for a dark page becomes unreadable until
+     hovered. Force a dark background/light text on every option site-wide. */
+  select {
+    color-scheme: dark;
+  }
+
+  option {
+    background-color: #1d2026;
+    color: #ffffff;
+  }
 }
 
 .glass {
