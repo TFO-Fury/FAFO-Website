@@ -393,6 +393,7 @@ export function AdminPanel({ onViewUser }: AdminPanelProps) {
                     <th className="px-5 py-4 text-[10px] font-black uppercase tracking-widest text-white/20 w-[80px]">Role</th>
                     <th className="px-5 py-4 text-[10px] font-black uppercase tracking-widest text-white/20 w-[100px]">Status</th>
                     <th className="px-5 py-4 text-[10px] font-black uppercase tracking-widest text-white/20 w-[160px]">Expires</th>
+                    <th className="px-5 py-4 text-[10px] font-black uppercase tracking-widest text-white/20 w-[160px]">Discord</th>
                     <th className="px-5 py-4 text-[10px] font-black uppercase tracking-widest text-white/20 text-right">Actions</th>
                   </tr>
                 </thead>
@@ -409,12 +410,7 @@ export function AdminPanel({ onViewUser }: AdminPanelProps) {
                                     </div>
                                     <div className="min-w-0">
                                       <div className="text-sm font-bold text-white/80 truncate">{user?.email || 'No Email'}</div>
-                                      <div className="flex items-center gap-2 min-w-0">
-                                        <div className="text-[9px] font-mono text-white/20 truncate">{user?.id?.slice(0, 12) || '?'}</div>
-                                        {user?.discordUsername && (
-                                          <div className="text-[9px] font-bold text-[#5865F2] truncate">@{user.discordUsername}</div>
-                                        )}
-                                      </div>
+                                      <div className="text-[9px] font-mono text-white/20 truncate">{user?.id?.slice(0, 12) || '?'}</div>
                                     </div>
                                   </div>
                                 </td>
@@ -643,6 +639,29 @@ export function AdminPanel({ onViewUser }: AdminPanelProps) {
                                     <span className="text-[10px] text-white/20">—</span>
                                   )}
                                 </td>
+
+                                {/* Discord Column */}
+                                <td className="px-5 py-3 w-[160px]">
+                                  {user?.discordId ? (
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="w-1.5 h-1.5 rounded-full bg-green-500 flex-shrink-0" />
+                                      <span className="text-[10px] font-bold text-white/60 truncate">
+                                        {user?.discordUsername ? `@${user.discordUsername}` : 'Linked'}
+                                      </span>
+                                    </div>
+                                  ) : user?.discordUsername ? (
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="w-1.5 h-1.5 rounded-full bg-yellow-500 flex-shrink-0" />
+                                      <span className="text-[10px] font-bold text-white/40 truncate">@{user.discordUsername}</span>
+                                    </div>
+                                  ) : (
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="w-1.5 h-1.5 rounded-full bg-white/10 flex-shrink-0" />
+                                      <span className="text-[10px] text-white/20">Not Linked</span>
+                                    </div>
+                                  )}
+                                </td>
+
                                 {/* Actions Column */}
                                 <td className="px-5 py-3 text-right">
                                   <div className="flex items-center justify-end gap-1">
