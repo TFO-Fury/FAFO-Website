@@ -282,7 +282,8 @@ export function AdminPanel({ onViewUser }: AdminPanelProps) {
     filteredUsers = users.filter(user => {
       if (!user) return false;
       const matchesSearch = (user.email || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-                           (user.discordId || '').toLowerCase().includes(searchTerm.toLowerCase());
+                           (user.discordId || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                           (user.discordUsername || '').toLowerCase().includes(searchTerm.toLowerCase());
       const matchesPlan = filterPlan === 'all' || user.plan === filterPlan;
       const matchesStatus = filterStatus === 'all' || user.accountStatus === filterStatus;
       return matchesSearch && matchesPlan && matchesStatus;
@@ -408,7 +409,12 @@ export function AdminPanel({ onViewUser }: AdminPanelProps) {
                                     </div>
                                     <div className="min-w-0">
                                       <div className="text-sm font-bold text-white/80 truncate">{user?.email || 'No Email'}</div>
-                                      <div className="text-[9px] font-mono text-white/20 truncate">{user?.id?.slice(0, 12) || '?'}</div>
+                                      <div className="flex items-center gap-2 min-w-0">
+                                        <div className="text-[9px] font-mono text-white/20 truncate">{user?.id?.slice(0, 12) || '?'}</div>
+                                        {user?.discordUsername && (
+                                          <div className="text-[9px] font-bold text-[#5865F2] truncate">@{user.discordUsername}</div>
+                                        )}
+                                      </div>
                                     </div>
                                   </div>
                                 </td>

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { db, auth, handleFirestoreError, OperationType } from '../lib/firebase';
 import { doc, onSnapshot, collection, query, where, orderBy, updateDoc } from 'firebase/firestore';
 import { motion, AnimatePresence } from 'motion/react';
@@ -49,6 +49,10 @@ export function Dashboard({ onUpgrade, targetUserId }: DashboardProps) {
   const [activationCode, setActivationCode] = useState('');
   const [isActivating, setIsActivating] = useState(false);
   const [activationResult, setActivationResult] = useState<{success: boolean, message: string} | null>(null);
+
+  const [discordUsernameInput, setDiscordUsernameInput] = useState('');
+  const [isSavingDiscordUsername, setIsSavingDiscordUsername] = useState(false);
+  const discordUsernameSeededRef = useRef(false);
 
   // Admin Override States
   const [adminDiscordId, setAdminDiscordId] = useState('');
@@ -121,6 +125,15 @@ export function Dashboard({ onUpgrade, targetUserId }: DashboardProps) {
       unsubKeys();
     };
   }, [currentUid]);
+
+  // Seed the self-reported Discord username field once when the profile first
+  // loads, without clobbering it while the user is actively editing it.
+  useEffect(() => {
+    if (userData && !discordUsernameSeededRef.current) {
+      setDiscordUsernameInput(userData.discordUsername || '');
+      discordUsernameSeededRef.current = true;
+    }
+  }, [userData]);
 
   // Auto-expiration observer
   useEffect(() => {
@@ -304,6 +317,33 @@ export function Dashboard({ onUpgrade, targetUserId }: DashboardProps) {
         : `\n\nDebug Info:\nOrigin: ${window.location.origin}\nUID: ${currentUid}\n\nEnsure this EXACT URL is in your Discord Portal:\n${window.location.origin}/auth/discord/callback`;
           
       alert(`Discord Connection Error: ${errorMsg}${tip}`);
+    }
+  };
+
+  const handleSaveDiscordUsername = async () => {
+    if (!currentUid) return;
+    setIsSavingDiscordUsername(true);
+    try {
+      const currentUser = auth.currentUser;
+      if (!currentUser) throw new Error('Not authenticated');
+      const token = await currentUser.getIdToken(true);
+
+      const res = await fetch('/api/user/update-discord-username', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ discordUsername: discordUsernameInput })
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    } catch (err: any) {
+      console.error('[Dashboard] Failed to save Discord username:', err);
+      alert(`Failed to save Discord username: ${err.message}`);
+    } finally {
+      setIsSavingDiscordUsername(false);
     }
   };
 
@@ -534,7 +574,9 @@ export function Dashboard({ onUpgrade, targetUserId }: DashboardProps) {
                     </div>
                     <div>
                       <p className="text-[10px] font-black text-green-500 uppercase tracking-widest leading-none mb-1">Authenticated</p>
-                      <p className="text-xs font-bold text-white/40 tabular-nums">Linked: {userData.discordId}</p>
+                      <p className="text-xs font-bold text-white/40 tabular-nums">
+                        Linked: {userData.discordUsername ? `@${userData.discordUsername}` : userData.discordId}
+                      </p>
                     </div>
                   </div>
                 ) : (
@@ -545,6 +587,33 @@ export function Dashboard({ onUpgrade, targetUserId }: DashboardProps) {
                     <p className="text-xs font-bold text-white/20 italic">No Discord account detected</p>
                   </div>
                 )
+              )}
+
+              {!isAdminViewing && (
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-white/20 uppercase tracking-widest">Discord Username</label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={discordUsernameInput}
+                      onChange={(e) => setDiscordUsernameInput(e.target.value)}
+                      placeholder="e.g. bobsmith"
+                      className="flex-1 h-12 bg-background border border-white/10 rounded-2xl px-5 text-sm font-bold tracking-tight text-white/60 outline-none focus:ring-2 focus:ring-[#5865F2]/20 transition-all"
+                    />
+                    <button
+                      onClick={handleSaveDiscordUsername}
+                      disabled={isSavingDiscordUsername}
+                      className="h-12 px-5 rounded-2xl bg-[#5865F2]/10 border border-[#5865F2]/20 text-[#5865F2] text-[10px] font-black uppercase tracking-widest hover:bg-[#5865F2] hover:text-white transition-all disabled:opacity-50"
+                    >
+                      {isSavingDiscordUsername ? '...' : 'Save'}
+                    </button>
+                  </div>
+                  <p className="text-[10px] text-white/20">
+                    {userData?.discordId
+                      ? "Automatically set from your linked Discord account."
+                      : "Let us know your Discord username so we can recognize you in the community, even before you link your account."}
+                  </p>
+                </div>
               )}
             </div>
           </div>

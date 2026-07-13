@@ -88,6 +88,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const firestore = await getDb();
         await firestore.collection('users').doc(userId).set({
           discordId: discordUserId,
+          discordUsername: discordUser.username,
           updatedAt: FieldValue.serverTimestamp(),
         }, { merge: true });
         console.log(`[Discord] Saved link to Firestore for ${userId}`);
