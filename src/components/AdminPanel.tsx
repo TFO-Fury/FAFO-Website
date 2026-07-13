@@ -139,7 +139,10 @@ export function AdminPanel({ onViewUser }: AdminPanelProps) {
       setEditingUser(null);
       alert("User updated successfully.");
     } catch (err: any) {
-      handleFirestoreError(err, OperationType.UPDATE, `users/${userId}`);
+      console.error('[AdminPanel] handleUpdateUser failed:', err);
+      // handleFirestoreError logs and re-throws - swallow that so the alert
+      // below actually runs instead of failing completely silently.
+      try { handleFirestoreError(err, OperationType.UPDATE, `users/${userId}`); } catch { /* logged already */ }
       alert(`Failed to update user: ${err.message}`);
     }
   };
