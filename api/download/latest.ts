@@ -3,6 +3,15 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 const GITHUB_REPO = 'FAFO-Rotations/FAFO-Rotations';
 const DEFAULT_ASSET = 'FAFO_AIO.lua';
 
+// The repo has two independent series of GitHub Releases sharing one repo: `release-*` (this one,
+// the main Lua bundle, from bundle.yml) and `manager-*` (the FAFO Manager, from fafo-manager.yml).
+// GitHub's own "latest release" endpoint returns whichever series most recently published, which
+// silently broke THIS endpoint the moment a manager-* release published after the last release-*
+// one (2026-07-13: this returned FAFO.zip's "unknown asset" error for FAFO_AIO.lua requests because
+// /releases/latest had started resolving to a manager-* release). Same fix as
+// api/download/manager-latest.ts already uses for its own series: list releases and pick the
+// newest whose tag starts with "release-" explicitly, instead of trusting GitHub's single "latest"
+// slot.
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'GET') {
     return res.status(405).json({ error: 'Method not allowed' });
@@ -17,9 +26,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const assetName = (req.query.asset as string) || DEFAULT_ASSET;
 
   try {
-    // 1. Fetch latest release info
-    console.log(`[DownloadProxy] Fetching latest release for ${GITHUB_REPO}`);
-    const releaseRes = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/releases/latest`, {
+    // 1. Fetch releases and pick the newest release-* one. NOTE: GitHub's /releases list endpoint
+    // does NOT reliably return newest-first (confirmed empirically elsewhere in this codebase), so
+    // this sorts by created_at explicitly rather than trusting API order.
+    console.log(`[DownloadProxy] Fetching releases for ${GITHUB_REPO}`);
+    const releasesRes = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/releases?per_page=20`, {
       headers: {
         'Authorization': `Bearer ${token}`,
         'Accept': 'application/vnd.github+json',
@@ -28,19 +39,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     });
 
-    if (!releaseRes.ok) {
-      const errorBody = await releaseRes.text();
-      console.error(`[DownloadProxy] GitHub release fetch failed: ${releaseRes.status}`, errorBody);
-      if (releaseRes.status === 401 || releaseRes.status === 403) {
+    if (!releasesRes.ok) {
+      const errorBody = await releasesRes.text();
+      console.error(`[DownloadProxy] GitHub releases fetch failed: ${releasesRes.status}`, errorBody);
+      if (releasesRes.status === 401 || releasesRes.status === 403) {
         return res.status(502).json({ error: 'GitHub authentication failed. Check GITHUB_TOKEN.' });
-      }
-      if (releaseRes.status === 404) {
-        return res.status(502).json({ error: 'Repository or release not found' });
       }
       return res.status(502).json({ error: 'Failed to fetch release info from GitHub' });
     }
 
-    const release = await releaseRes.json();
+    const releases = await releasesRes.json();
+    const release = (releases as any[])
+      .filter(r => typeof r.tag_name === 'string' && r.tag_name.startsWith('release-'))
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0];
+
+    if (!release) {
+      console.error('[DownloadProxy] No release-* release found');
+      return res.status(404).json({ error: 'No main bundle release found yet' });
+    }
+
     const tag = release.tag_name;
     const assets = release.assets || [];
 
