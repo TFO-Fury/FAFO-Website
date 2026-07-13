@@ -1,6 +1,6 @@
 import { useState, useEffect, ReactNode } from 'react';
 import { db, auth, handleFirestoreError, OperationType } from '../lib/firebase';
-import { collection, onSnapshot, doc, updateDoc, deleteDoc, query, orderBy, limit, Timestamp, serverTimestamp } from 'firebase/firestore';
+import { collection, onSnapshot, doc, updateDoc, deleteDoc, query, orderBy, limit } from 'firebase/firestore';
 import {
   Search,
   Edit3,
@@ -111,7 +111,10 @@ export function AdminPanel({ onViewUser }: AdminPanelProps) {
       if (!currentUser) throw new Error('Not authenticated');
       const token = await currentUser.getIdToken(true);
 
-      // Strip internal UI-only fields and convert date strings to Timestamps
+      // Strip internal UI-only fields. Dates are sent as plain YYYY-MM-DD
+      // strings (or null) - the backend converts them to Firestore Timestamps.
+      // A client-SDK Timestamp/serverTimestamp built here wouldn't survive
+      // JSON.stringify + the REST hop, and would get stored as a broken map.
       const { _newClass, _newClassExpires, _originalAioExpires, ...cleanUpdates } = editForm;
 
       // Only touch aioExpires if the admin actually changed it in this session -
@@ -119,21 +122,6 @@ export function AdminPanel({ onViewUser }: AdminPanelProps) {
       // resend it and the backend would wipe the AIO date / class entitlements.
       if (cleanUpdates.aioExpires === _originalAioExpires) {
         delete cleanUpdates.aioExpires;
-      } else if (cleanUpdates.aioExpires) {
-        cleanUpdates.aioExpires = Timestamp.fromDate(new Date(cleanUpdates.aioExpires));
-      }
-
-      // Convert classEntitlements date strings -> Timestamps
-      if (cleanUpdates.classEntitlements && typeof cleanUpdates.classEntitlements === 'object') {
-        const processed: Record<string, any> = {};
-        for (const [cls, ent] of Object.entries(cleanUpdates.classEntitlements)) {
-          const raw = ent as any;
-          processed[cls] = {
-            expires: raw?.expires ? Timestamp.fromDate(new Date(raw.expires)) : null,
-            updatedAt: serverTimestamp()
-          };
-        }
-        cleanUpdates.classEntitlements = processed;
       }
 
       const res = await fetch('/api/admin/user/update', {
@@ -661,7 +649,15 @@ export function AdminPanel({ onViewUser }: AdminPanelProps) {
                                       <button
                                         onClick={() => {
                                           const legacyClass = user?.selectedClass && !user?.classEntitlements ? { [user.selectedClass]: { expires: user?.expiresAt, updatedAt: user?.updatedAt } } : undefined;
-                                          const classEntitlements = user?.classEntitlements || legacyClass || {};
+                                          const rawClassEntitlements = user?.classEntitlements || legacyClass || {};
+                                          // Normalize each class's `expires` (a Firestore Timestamp) to a plain
+                                          // YYYY-MM-DD string for the date input - Timestamp instances don't
+                                          // survive JSON.stringify + the REST hop to the update endpoint.
+                                          const classEntitlements: Record<string, any> = {};
+                                          for (const [cls, ent] of Object.entries<any>(rawClassEntitlements)) {
+                                            const expiresDate = ent?.expires?.toDate ? ent.expires.toDate() : (ent?.expires instanceof Date ? ent.expires : null);
+                                            classEntitlements[cls] = { expires: expiresDate ? expiresDate.toISOString().split('T')[0] : '' };
+                                          }
                                           const aioDate = user?.aioExpires?.toDate ? user.aioExpires.toDate().toISOString().split('T')[0] : (user?.aioExpires instanceof Date ? user.aioExpires.toISOString().split('T')[0] : '');
                                           setEditForm({
                                             plan: user?.plan,

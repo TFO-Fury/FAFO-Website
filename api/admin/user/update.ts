@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { readJsonBody } from '../../_lib/body.js';
-import { getDb, FieldValue } from '../../_lib/firebase-admin.js';
+import { getDb, FieldValue, Timestamp } from '../../_lib/firebase-admin.js';
 import { requireAdmin } from '../../_lib/auth.js';
 import { triggerLicenseSync } from '../../_lib/github.js';
 
@@ -27,6 +27,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       ...updates,
       updatedAt: FieldValue.serverTimestamp()
     };
+
+    // The client sends dates as plain YYYY-MM-DD strings (or null) - a
+    // Firestore Timestamp built on the client wouldn't survive JSON.stringify
+    // across the REST hop, so the actual conversion happens here. Pinned to
+    // UTC noon so the calendar date can't roll over in negative-UTC timezones.
+    const toTimestamp = (dateStr: string) => Timestamp.fromDate(new Date(`${dateStr}T12:00:00Z`));
+
+    if ('aioExpires' in updates) {
+      updatePayload.aioExpires = updates.aioExpires ? toTimestamp(updates.aioExpires) : null;
+    }
+
+    if (updates.classEntitlements && typeof updates.classEntitlements === 'object') {
+      const processed: Record<string, any> = {};
+      for (const [cls, ent] of Object.entries<any>(updates.classEntitlements)) {
+        processed[cls] = {
+          expires: ent?.expires ? toTimestamp(ent.expires) : null,
+          updatedAt: FieldValue.serverTimestamp()
+        };
+      }
+      updatePayload.classEntitlements = processed;
+    }
 
     // Remove legacy selectedClass if migrating
     if (updates.classEntitlements || updates.aioExpires) {
