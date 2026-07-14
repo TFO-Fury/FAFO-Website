@@ -1,6 +1,8 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { getAppUrl } from '../../_lib/app-url.js';
 import { getDb, FieldValue } from '../../_lib/firebase-admin.js';
+import { normalizeEntitlements } from '../../_lib/entitlements.js';
+import { syncDiscord } from '../../_lib/discord.js';
 
 function getHeaderValue(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value;
@@ -86,45 +88,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (userId && userId !== 'undefined') {
       try {
         const firestore = await getDb();
-        await firestore.collection('users').doc(userId).set({
+        const userRef = firestore.collection('users').doc(userId);
+        await userRef.set({
           discordId: discordUserId,
           discordUsername: discordUser.username,
           updatedAt: FieldValue.serverTimestamp(),
         }, { merge: true });
         console.log(`[Discord] Saved link to Firestore for ${userId}`);
+
+        // Grant whatever Discord role matches the user's ACTUAL entitlements
+        // in Firestore. The client-supplied roleType (from the OAuth state
+        // param, requested at /api/auth/discord/url) is just a URL query
+        // string - anyone could set it to any value ('aio', etc.) with no
+        // purchase at all, so it must never be trusted for role decisions.
+        const userSnap = await userRef.get();
+        const normalized = normalizeEntitlements(userSnap.data());
+        const syncResult = await syncDiscord(userId, normalized.plan);
+        console.log(`[Discord] Role sync after link for ${userId}: requestedRoleType=${roleType}, actualPlan=${normalized.plan}`, syncResult);
       } catch (err) {
-        console.error(`[Discord] Firestore update error:`, err);
-      }
-    }
-
-    const DISCORD_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN;
-    const DISCORD_GUILD_ID = process.env.DISCORD_GUILD_ID;
-    const DISCORD_ROLE_ONE_CLASS = process.env.DISCORD_ROLE_ONE_CLASS;
-    const DISCORD_ROLE_AIO = process.env.DISCORD_ROLE_AIO;
-
-    if (DISCORD_BOT_TOKEN && DISCORD_GUILD_ID) {
-      const rolesToAssign = (roleType || '').split(',');
-
-      for (const type of rolesToAssign) {
-        let roleId: string | null = null;
-        if (type === 'aio') roleId = DISCORD_ROLE_AIO || null;
-        else if (type === 'one-class') roleId = DISCORD_ROLE_ONE_CLASS || null;
-        else if (type === 'trial') roleId = process.env.DISCORD_ROLE_TRIAL || '1501005403641876480';
-
-        if (roleId) {
-          try {
-            await fetch(`https://discord.com/api/guilds/${DISCORD_GUILD_ID}/members/${discordUserId}/roles/${roleId}`, {
-              method: 'PUT',
-              headers: {
-                Authorization: `Bot ${DISCORD_BOT_TOKEN}`,
-                'Content-Type': 'application/json',
-              },
-            });
-            console.log(`Successfully assigned role ${roleId} (${type}) to user ${discordUserId}`);
-          } catch (err) {
-            console.error(`Failed to assign role ${roleId}:`, err);
-          }
-        }
+        console.error(`[Discord] Firestore update / role sync error:`, err);
       }
     }
 

@@ -29,7 +29,10 @@ export default function handler(req: VercelRequest, res: VercelResponse) {
       redirect_uri: redirectUri,
       response_type: 'code',
       scope: 'identify guilds.join',
-      state: `${userId}:${roleType || 'one-class'}`,
+      // roleType is only used for logging in the callback now - the actual
+      // Discord role granted is always computed server-side from real
+      // Firestore entitlements, never from this client-supplied value.
+      state: `${userId}:${roleType || 'none'}`,
     });
 
     const url = `https://discord.com/api/oauth2/authorize?${params.toString()}`;

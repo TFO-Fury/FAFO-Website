@@ -279,7 +279,10 @@ export function Dashboard({ onUpgrade, targetUserId }: DashboardProps) {
 
   const handleLinkDiscord = async () => {
     try {
-      const roleType = userData?.plan === 'aio' ? 'aio' : (userData?.plan === 'trial' ? 'trial' : 'one-class');
+      // roleType is just a debugging hint now - the server computes the
+      // actual Discord role from real Firestore entitlements at link time,
+      // never from this client-supplied value (see auth/discord/callback.ts).
+      const roleType = userData?.plan || 'none';
       const params = new URLSearchParams({
         roleType,
         userId: currentUid ?? '',
