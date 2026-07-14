@@ -590,7 +590,7 @@ export default function App() {
                           <h3 className="text-white/80 font-bold text-xs tracking-widest uppercase italic mb-4">AIO Access</h3>
                           <div className="flex items-baseline gap-2">
                             <p className="text-5xl font-black font-display text-white italic">$35<span className="text-xs">/mo</span></p>
-                            <p className="text-lg font-bold text-white/30 line-through italic">$50</p>
+                            <p className="text-3xl font-bold text-white/40 line-through italic">$50</p>
                           </div>
                           <p className="text-primary text-sm font-black uppercase tracking-widest mt-2">Limited Time Only</p>
                         </div>
