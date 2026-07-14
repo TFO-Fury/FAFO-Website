@@ -216,6 +216,37 @@ export function CheckoutModal({ isOpen, onClose, user, userData, cart, total, is
     }
   };
 
+  const handleClaimTrial = async () => {
+    if (!user) {
+      alert("Session expired. Please log in again.");
+      return;
+    }
+    try {
+      setLoading(true);
+      const idToken = await user.getIdToken();
+      const res = await fetch('/api/claim-trial', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${idToken}`
+        },
+        body: JSON.stringify({ userId: user.uid })
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Trial claim failed');
+      }
+      console.log('[CheckoutModal] Trial claim success:', data);
+      setStep('success');
+      onSuccess();
+    } catch (err: any) {
+      console.error('[CheckoutModal] Trial claim error:', err);
+      alert(`Failed to start trial: ${err.message || 'Unknown error'}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleDiscordLink = async () => {
     try {
       setIsDiscordLoading(true);
@@ -311,13 +342,38 @@ export function CheckoutModal({ isOpen, onClose, user, userData, cart, total, is
                     {userData?.role !== 'admin' && userData?.role !== 'owner' ? (
                       <div className="space-y-4">
                         {total === 0 ? (
-                          <button
-                            disabled={loading}
-                            onClick={handleFreeUpgrade}
-                            className="w-full h-14 rounded-xl bg-primary text-white font-black tracking-widest uppercase text-sm shadow-xl shadow-primary/25 hover:scale-[1.02] active:scale-95 transition-all disabled:opacity-50"
-                          >
-                            {loading ? 'Processing...' : 'Confirm Free Upgrade'}
-                          </button>
+                          cart.some(i => i.type === 'trial') ? (
+                            isDiscordLinked ? (
+                              <button
+                                disabled={loading}
+                                onClick={handleClaimTrial}
+                                className="w-full h-14 rounded-xl bg-primary text-white font-black tracking-widest uppercase text-sm shadow-xl shadow-primary/25 hover:scale-[1.02] active:scale-95 transition-all disabled:opacity-50"
+                              >
+                                {loading ? 'Processing...' : 'Confirm Free Trial'}
+                              </button>
+                            ) : (
+                              <div className="space-y-4">
+                                <div className="p-4 rounded-xl bg-[#5865F2]/5 border border-[#5865F2]/20 text-center">
+                                  <p className="text-xs font-bold text-white/60">Link your Discord account to claim your free trial.</p>
+                                </div>
+                                <button
+                                  disabled={isDiscordLoading}
+                                  onClick={handleDiscordLink}
+                                  className="w-full h-14 rounded-xl bg-[#5865F2] hover:bg-[#4752C4] text-white font-black tracking-widest uppercase text-sm shadow-xl shadow-[#5865F2]/20 transition-all disabled:opacity-50"
+                                >
+                                  {isDiscordLoading ? 'Connecting...' : 'Link Discord'}
+                                </button>
+                              </div>
+                            )
+                          ) : (
+                            <button
+                              disabled={loading}
+                              onClick={handleFreeUpgrade}
+                              className="w-full h-14 rounded-xl bg-primary text-white font-black tracking-widest uppercase text-sm shadow-xl shadow-primary/25 hover:scale-[1.02] active:scale-95 transition-all disabled:opacity-50"
+                            >
+                              {loading ? 'Processing...' : 'Confirm Free Upgrade'}
+                            </button>
+                          )
                         ) : (() => {
                           const singleClassItem = cart.find(i => i.type === 'one-class');
                           const plan = cart.some(i => i.type === 'trial')
