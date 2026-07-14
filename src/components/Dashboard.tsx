@@ -55,6 +55,7 @@ export function Dashboard({ onUpgrade, targetUserId }: DashboardProps) {
   const discordUsernameSeededRef = useRef(false);
 
   const [isCancellingSubscription, setIsCancellingSubscription] = useState(false);
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
 
   // Admin Override States
   const [adminDiscordId, setAdminDiscordId] = useState('');
@@ -351,7 +352,7 @@ export function Dashboard({ onUpgrade, targetUserId }: DashboardProps) {
 
   const handleCancelSubscription = async () => {
     if (!currentUid) return;
-    if (!confirm('Cancel your AIO subscription? You\'ll keep access until your current period ends, but it will not auto-renew.')) return;
+    setShowCancelConfirm(false);
     setIsCancellingSubscription(true);
     try {
       const currentUser = auth.currentUser;
@@ -532,13 +533,36 @@ export function Dashboard({ onUpgrade, targetUserId }: DashboardProps) {
                       </span>
                     </div>
                     {userData?.subscriptionStatus === 'active' && (
-                      <button
-                        onClick={handleCancelSubscription}
-                        disabled={isCancellingSubscription}
-                        className="w-full h-9 rounded-lg border border-white/10 text-white/40 hover:text-red-500 hover:border-red-500/30 text-[10px] font-black uppercase tracking-widest transition-all disabled:opacity-50"
-                      >
-                        {isCancellingSubscription ? 'Cancelling...' : 'Cancel Subscription'}
-                      </button>
+                      showCancelConfirm ? (
+                        <div className="space-y-2 p-3 rounded-lg border border-[#dc3545]/30 bg-[#dc3545]/5">
+                          <p className="text-[10px] font-bold text-white/60 text-center">
+                            Cancel your subscription? You'll keep access until your current period ends, but it won't auto-renew.
+                          </p>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={handleCancelSubscription}
+                              disabled={isCancellingSubscription}
+                              className="flex-1 py-2.5 bg-[#dc3545] hover:bg-[#bb2d3b] text-white text-xs font-black uppercase tracking-widest rounded-lg transition-all disabled:opacity-50"
+                            >
+                              {isCancellingSubscription ? 'Cancelling...' : 'Yes'}
+                            </button>
+                            <button
+                              onClick={() => setShowCancelConfirm(false)}
+                              disabled={isCancellingSubscription}
+                              className="flex-1 py-2.5 bg-white/5 hover:bg-white/10 text-white text-xs font-black uppercase tracking-widest rounded-lg transition-all disabled:opacity-50"
+                            >
+                              No
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => setShowCancelConfirm(true)}
+                          className="w-full py-3 bg-[#dc3545] hover:bg-[#bb2d3b] text-white text-xs font-black uppercase tracking-widest rounded-lg transition-all"
+                        >
+                          Cancel Subscription
+                        </button>
+                      )
                     )}
                   </div>
                 )}
