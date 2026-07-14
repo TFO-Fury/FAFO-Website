@@ -54,6 +54,8 @@ export function Dashboard({ onUpgrade, targetUserId }: DashboardProps) {
   const [isSavingDiscordUsername, setIsSavingDiscordUsername] = useState(false);
   const discordUsernameSeededRef = useRef(false);
 
+  const [isCancellingSubscription, setIsCancellingSubscription] = useState(false);
+
   // Admin Override States
   const [adminDiscordId, setAdminDiscordId] = useState('');
   const [adminPlan, setAdminPlan] = useState('');
@@ -347,6 +349,35 @@ export function Dashboard({ onUpgrade, targetUserId }: DashboardProps) {
     }
   };
 
+  const handleCancelSubscription = async () => {
+    if (!currentUid) return;
+    if (!confirm('Cancel your AIO subscription? You\'ll keep access until your current period ends, but it will not auto-renew.')) return;
+    setIsCancellingSubscription(true);
+    try {
+      const currentUser = auth.currentUser;
+      if (!currentUser) throw new Error('Not authenticated');
+      const token = await currentUser.getIdToken(true);
+
+      const res = await fetch('/api/paypal/cancel-subscription', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ userId: currentUid })
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.error || `HTTP ${res.status}`);
+      alert('Subscription cancelled. You\'ll keep access until it expires.');
+    } catch (err: any) {
+      console.error('[Dashboard] Failed to cancel subscription:', err);
+      alert(`Failed to cancel subscription: ${err.message}`);
+    } finally {
+      setIsCancellingSubscription(false);
+    }
+  };
+
   if (loading) return (
     <div className="flex-1 flex items-center justify-center">
       <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
@@ -490,6 +521,27 @@ export function Dashboard({ onUpgrade, targetUserId }: DashboardProps) {
                     </div>
                   );
                 })()}
+
+                {/* Subscription Status */}
+                {userData?.subscriptionId && (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-black text-white/25 uppercase tracking-widest">Subscription</span>
+                      <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border ${userData?.subscriptionStatus === 'active' ? 'bg-green-500/10 text-green-500 border-green-500/20' : 'bg-white/5 text-white/40 border-white/10'}`}>
+                        {userData?.subscriptionStatus === 'active' ? 'Auto-Renews' : userData?.subscriptionStatus === 'cancelled' ? 'Cancelled' : userData?.subscriptionStatus === 'suspended' ? 'Suspended' : userData?.subscriptionStatus === 'expired' ? 'Expired' : 'Unknown'}
+                      </span>
+                    </div>
+                    {userData?.subscriptionStatus === 'active' && (
+                      <button
+                        onClick={handleCancelSubscription}
+                        disabled={isCancellingSubscription}
+                        className="w-full h-9 rounded-lg border border-white/10 text-white/40 hover:text-red-500 hover:border-red-500/30 text-[10px] font-black uppercase tracking-widest transition-all disabled:opacity-50"
+                      >
+                        {isCancellingSubscription ? 'Cancelling...' : 'Cancel Subscription'}
+                      </button>
+                    )}
+                  </div>
+                )}
 
                 {/* Class Entitlements — hidden when AIO active */}
                 {(() => {

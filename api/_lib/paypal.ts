@@ -71,6 +71,36 @@ export async function capturePayPalOrder(orderId: string) {
   return res.json() as Promise<any>;
 }
 
+export async function getSubscriptionDetails(subscriptionId: string) {
+  const accessToken = await getAccessToken();
+  const res = await fetch(`${PAYPAL_BASE_URL}/v1/billing/subscriptions/${subscriptionId}`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${accessToken}` }
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`PayPal get subscription failed: ${res.status} ${text}`);
+  }
+  return res.json() as Promise<any>;
+}
+
+export async function cancelSubscription(subscriptionId: string, reason: string) {
+  const accessToken = await getAccessToken();
+  const res = await fetch(`${PAYPAL_BASE_URL}/v1/billing/subscriptions/${subscriptionId}/cancel`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${accessToken}`
+    },
+    body: JSON.stringify({ reason })
+  });
+  // 204 No Content on success
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`PayPal cancel subscription failed: ${res.status} ${text}`);
+  }
+}
+
 export async function verifyWebhookSignature(
   transmissionId: string,
   certId: string,

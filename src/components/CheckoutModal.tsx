@@ -4,6 +4,7 @@ import { X, CreditCard, Zap, ChevronDown, CheckCircle2, Hexagon, FlaskConical } 
 import { db } from '../lib/firebase';
 import { doc, setDoc, updateDoc, getDoc, serverTimestamp, collection, addDoc, deleteField } from 'firebase/firestore';
 import PayPalCheckout from './PayPalCheckout';
+import PayPalSubscribeButton from './PayPalSubscribeButton';
 
 interface CheckoutModalProps {
   isOpen: boolean;
@@ -381,6 +382,22 @@ export function CheckoutModal({ isOpen, onClose, user, userData, cart, total, is
                             : cart.some(i => i.type === 'aio')
                               ? 'aio'
                               : 'single';
+                          if (plan === 'aio') {
+                            return (
+                              <PayPalSubscribeButton
+                                userId={user?.uid}
+                                onSuccess={(result) => {
+                                  console.log('[CheckoutModal] Subscription confirmed:', result);
+                                  setStep('success');
+                                  onSuccess();
+                                }}
+                                onError={(err) => {
+                                  console.error('[CheckoutModal] Subscription error:', err);
+                                  alert('Subscription failed. Please try again.');
+                                }}
+                              />
+                            );
+                          }
                           return (
                             <PayPalCheckout
                               plan={plan}
@@ -419,6 +436,22 @@ export function CheckoutModal({ isOpen, onClose, user, userData, cart, total, is
                               : cart.some(i => i.type === 'aio')
                                 ? 'aio'
                                 : 'single';
+                            if (plan === 'aio') {
+                              return (
+                                <PayPalSubscribeButton
+                                  userId={user?.uid}
+                                  onSuccess={(result) => {
+                                    console.log('[CheckoutModal] Subscription confirmed:', result);
+                                    setStep('success');
+                                    onSuccess();
+                                  }}
+                                  onError={(err) => {
+                                    console.error('[CheckoutModal] Subscription error:', err);
+                                    alert('Subscription failed. Please try again.');
+                                  }}
+                                />
+                              );
+                            }
                             return (
                               <PayPalCheckout
                                 plan={plan}

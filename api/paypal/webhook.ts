@@ -41,6 +41,118 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Process async
   try {
     const firestore = await getDb();
+
+    // --- Subscription lifecycle events are keyed by subscriptionId (or the
+    // sale's billing_agreement_id), never a paypal_orders doc, so they're
+    // handled independently of the one-time-order flow below. ---
+
+    if (eventType === 'PAYMENT.SALE.COMPLETED' && resource?.billing_agreement_id) {
+      const subscriptionId = resource.billing_agreement_id;
+      const saleId = resource.id;
+
+      const usersQuery = await firestore.collection('users')
+        .where('subscriptionId', '==', subscriptionId)
+        .limit(1)
+        .get();
+
+      if (usersQuery.empty) {
+        console.warn(`[PayPalWebhook] No user found for subscription ${subscriptionId} (sale ${saleId})`);
+        return;
+      }
+
+      const userDoc = usersQuery.docs[0];
+      const userRef = userDoc.ref;
+      const userData = userDoc.data();
+
+      // Dedup: skip if this sale was already recorded (e.g. webhook retry).
+      const dupQuery = await firestore.collection('orders')
+        .where('transactionId', '==', saleId)
+        .limit(1)
+        .get();
+      if (!dupQuery.empty) {
+        console.log(`[PayPalWebhook] Deduplication: sale ${saleId} already processed, skipping`);
+        return;
+      }
+
+      const days = 30;
+      const aioExpirationDate = calculateStackedExpiration(userData?.aioExpires, days);
+      const aioExpirationTimestamp = Timestamp.fromDate(aioExpirationDate);
+
+      await userRef.set({
+        plan: 'aio',
+        isAio: true,
+        accountStatus: 'active',
+        aioExpires: aioExpirationTimestamp,
+        classEntitlements: FieldValue.delete(),
+        selectedClass: FieldValue.delete(),
+        subscriptionStatus: 'active',
+        updatedAt: FieldValue.serverTimestamp()
+      }, { merge: true });
+
+      await firestore.collection('orders').add({
+        userId: userRef.id,
+        email: userData?.email || null,
+        paypalEmail: resource?.payer?.email_address || null,
+        plan: 'aio',
+        className: null,
+        amount: 35,
+        currency: 'USD',
+        source: 'paypal-subscription-renewal',
+        paymentProvider: 'paypal',
+        paymentStatus: 'completed',
+        transactionId: saleId,
+        orderId: null,
+        subscriptionId,
+        excludedFromRevenue: false,
+        createdAt: FieldValue.serverTimestamp()
+      });
+
+      syncDiscord(userRef.id, 'aio').catch((err: any) => console.error('[Discord Sync Error]', err));
+      triggerLicenseSync(userRef.id, 'paypal-subscription-renewal').catch((err: any) => console.error('[LicenseSync] Renewal sync failed:', err));
+
+      console.log(`[PayPalWebhook] Subscription ${subscriptionId} renewed for ${userRef.id}, expires=${aioExpirationDate.toISOString()}`);
+      return;
+    }
+
+    if (
+      eventType === 'BILLING.SUBSCRIPTION.CANCELLED' ||
+      eventType === 'BILLING.SUBSCRIPTION.SUSPENDED' ||
+      eventType === 'BILLING.SUBSCRIPTION.EXPIRED'
+    ) {
+      const subscriptionId = resource?.id;
+      if (!subscriptionId) {
+        console.warn(`[PayPalWebhook] Missing subscription ID in ${eventType} event`);
+        return;
+      }
+
+      const usersQuery = await firestore.collection('users')
+        .where('subscriptionId', '==', subscriptionId)
+        .limit(1)
+        .get();
+
+      if (usersQuery.empty) {
+        console.warn(`[PayPalWebhook] No user found for subscription ${subscriptionId} (${eventType})`);
+        return;
+      }
+
+      const statusMap: Record<string, string> = {
+        'BILLING.SUBSCRIPTION.CANCELLED': 'cancelled',
+        'BILLING.SUBSCRIPTION.SUSPENDED': 'suspended',
+        'BILLING.SUBSCRIPTION.EXPIRED': 'expired'
+      };
+
+      const userRef = usersQuery.docs[0].ref;
+      await userRef.set({
+        subscriptionStatus: statusMap[eventType],
+        subscriptionCancelledAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp()
+      }, { merge: true });
+
+      console.log(`[PayPalWebhook] Subscription ${subscriptionId} marked as ${statusMap[eventType]} (entitlements preserved until expiration)`);
+      return;
+    }
+
+    // --- One-time order events (existing flow) ---
     const paypalOrderRef = firestore.collection('paypal_orders').doc(orderId);
     const paypalOrderSnap = await paypalOrderRef.get();
 
@@ -152,34 +264,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       triggerLicenseSync(userId, 'paypal-webhook').catch((err: any) => console.error('[LicenseSync] Webhook sync failed:', err));
 
       console.log(`[PayPalWebhook] Completed processing ${orderId} for user ${userId}`);
-    }
-
-    if (eventType === 'BILLING.SUBSCRIPTION.CANCELLED') {
-      const subscriptionId = resource?.id;
-      if (!subscriptionId) {
-        console.warn('[PayPalWebhook] Missing subscription ID in cancellation event');
-        return;
-      }
-
-      // Find user with matching subscriptionId
-      const usersQuery = await firestore.collection('users')
-        .where('subscriptionId', '==', subscriptionId)
-        .limit(1)
-        .get();
-
-      if (usersQuery.empty) {
-        console.warn(`[PayPalWebhook] No user found for cancelled subscription ${subscriptionId}`);
-        return;
-      }
-
-      const userRef = usersQuery.docs[0].ref;
-      await userRef.set({
-        subscriptionStatus: 'cancelled',
-        subscriptionCancelledAt: FieldValue.serverTimestamp(),
-        updatedAt: FieldValue.serverTimestamp()
-      }, { merge: true });
-
-      console.log(`[PayPalWebhook] Subscription ${subscriptionId} marked as cancelled (entitlements preserved until expiration)`);
     }
   } catch (err: any) {
     console.error('[PayPalWebhook] Processing error:', err);
