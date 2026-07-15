@@ -1,13 +1,27 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { getAppUrl } from '../../_lib/app-url.js';
+import { verifyIdToken } from '../../_lib/auth.js';
 
 function getHeaderValue(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value;
 }
 
-export default function handler(req: VercelRequest, res: VercelResponse) {
+export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
-    const userId = getHeaderValue(req.query.userId);
+    // This used to trust userId as a plain, unauthenticated query param.
+    // Anyone could request a link URL for ANY victim's userId, complete it
+    // with their own Discord account, and the callback would write their
+    // discordId onto the victim's account - then grant the victim's paid
+    // role to the attacker's Discord account. userId must now come from a
+    // verified ID token, never the query string.
+    let decoded;
+    try {
+      decoded = await verifyIdToken(req);
+    } catch (err: any) {
+      return res.status(401).json({ error: err.message || 'Unauthorized' });
+    }
+    const userId = decoded.uid;
+
     const roleType = getHeaderValue(req.query.roleType);
     const currentAppUrl = getAppUrl(req);
     const discordClientId = process.env.DISCORD_CLIENT_ID;
@@ -17,10 +31,6 @@ export default function handler(req: VercelRequest, res: VercelResponse) {
 
     if (!discordClientId || !discordClientSecret) {
       return res.status(500).json({ error: 'Discord credentials missing on server.' });
-    }
-
-    if (!userId) {
-      return res.status(400).json({ error: 'userId required' });
     }
 
     const redirectUri = `${currentAppUrl}/auth/discord/callback`;

@@ -3,11 +3,15 @@ import { readJsonBody } from '../../_lib/body.js';
 import { getDb } from '../../_lib/firebase-admin.js';
 import { syncDiscord } from '../../_lib/discord.js';
 import { triggerLicenseSync } from '../../_lib/github.js';
+import { requireAdmin } from '../../_lib/auth.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
+
+  const caller = await requireAdmin(req, res);
+  if (!caller) return;
 
   const body = await readJsonBody(req);
   const { userId } = body || {};

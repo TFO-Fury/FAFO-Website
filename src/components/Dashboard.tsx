@@ -205,17 +205,24 @@ export function Dashboard({ onUpgrade, targetUserId }: DashboardProps) {
   const handleAdminSyncRoles = async () => {
     if (!currentUid) return;
     try {
+      const currentUser = auth.currentUser;
+      if (!currentUser) throw new Error('Not authenticated');
+      const token = await currentUser.getIdToken();
+
       const url = '/api/admin/user/sync-roles';
       console.log("Calling API:", url);
       const res = await fetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
         body: JSON.stringify({ userId: currentUid })
       });
       const data = await res.json();
       alert(data.success ? "Roles synced!" : "Sync failed: " + data.error);
-    } catch (err) {
-      alert("Role sync error.");
+    } catch (err: any) {
+      alert(`Role sync error: ${err.message || 'Unknown error'}`);
     }
   };
 
@@ -279,18 +286,21 @@ export function Dashboard({ onUpgrade, targetUserId }: DashboardProps) {
 
   const handleLinkDiscord = async () => {
     try {
+      const currentUser = auth.currentUser;
+      if (!currentUser) throw new Error('Not authenticated');
+      const token = await currentUser.getIdToken();
+
       // roleType is just a debugging hint now - the server computes the
       // actual Discord role from real Firestore entitlements at link time,
       // never from this client-supplied value (see auth/discord/callback.ts).
       const roleType = userData?.plan || 'none';
-      const params = new URLSearchParams({
-        roleType,
-        userId: currentUid ?? '',
-      });
+      const params = new URLSearchParams({ roleType });
       const url = `/api/auth/discord/url?${params.toString()}`;
       console.log("Calling API:", url);
-      const res = await fetch(url);
-      
+      const res = await fetch(url, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
       if (!res.ok) {
         let details = `Server returned ${res.status}`;
         try {

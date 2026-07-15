@@ -80,12 +80,13 @@ service cloud.firestore {
       allow get: if isSignedIn() && (isAdmin() || resource.data.userId == request.auth.uid);
       allow list: if isSignedIn() && (isAdmin() || resource.data.userId == request.auth.uid);
       
-      allow create: if isSignedIn() && (
-        isAdmin() || (
-          request.resource.data.userId == request.auth.uid &&
-          request.resource.data.status == 'active'
-        )
-      );
+      // Only the server (Admin SDK, via api/keys/activate.ts - which bypasses
+      // these rules entirely) ever legitimately creates a cd_keys doc. No
+      // frontend code creates one directly, so this is admin-only: letting a
+      // regular signed-in user create their own "active" key doc with an
+      // arbitrary plan field was dead-code-permissive attack surface, not a
+      // feature anything used.
+      allow create: if isAdmin();
       
       allow update: if isSignedIn() && (
         isAdmin() || (

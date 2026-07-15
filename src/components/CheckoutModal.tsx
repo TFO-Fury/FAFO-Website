@@ -251,15 +251,15 @@ export function CheckoutModal({ isOpen, onClose, user, userData, cart, total, is
   const handleDiscordLink = async () => {
     try {
       setIsDiscordLoading(true);
+      const token = await user.getIdToken();
       const roleTypes = Array.from(new Set(cart.map(i => i.type))).join(',');
-      const params = new URLSearchParams({
-        roleType: roleTypes,
-        userId: user.uid,
-      });
+      const params = new URLSearchParams({ roleType: roleTypes });
       const url = `/api/auth/discord/url?${params.toString()}`;
       console.log("Calling API:", url);
-      const res = await fetch(url);
-      
+      const res = await fetch(url, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
       if (!res.ok) {
         let details = `Server returned ${res.status}`;
         try {

@@ -4,6 +4,7 @@ import { getDb, FieldValue, Timestamp } from '../_lib/firebase-admin.js';
 import { syncDiscord } from '../_lib/discord.js';
 import { triggerLicenseSync } from '../_lib/github.js';
 import { normalizeEntitlements, timestampToDate, calculateStackedExpiration } from '../_lib/entitlements.js';
+import { isValidPlan, isValidClassName } from '../_lib/pricing.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
@@ -11,8 +12,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   const body = await readJsonBody(req);
-  const { key, userId, plan: reqPlan, className: reqClassName } = body || {};
-  console.log(`[API] Activate Key Request: ${key} for user ${userId} (reqPlan: ${reqPlan || '(none)'}, className: ${reqClassName || '(none)'})`);
+  const { key, userId, className: reqClassName } = body || {};
+  console.log(`[API] Activate Key Request: ${key} for user ${userId}`);
 
   if (!key || !userId) {
     console.warn('[API] Missing key or userId in activation request');
@@ -24,149 +25,115 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const keyRef = firestore.collection('cd_keys').doc(key);
     const keySnap = await keyRef.get();
 
-    // Read existing user metadata FIRST to preserve entitlements
+    // Keys are issued externally, never generated through this site - so
+    // activation can only ever redeem a key that already exists, using the
+    // plan it was actually issued with. Never trust a client-supplied plan:
+    // a nonexistent key used to just get silently created on the spot with
+    // whatever plan the request claimed, which meant anyone could POST a
+    // made-up key string with plan: 'aio' and get free access.
+    if (!keySnap.exists) {
+      console.warn(`[API] Activation attempted with unknown key ${key} by user ${userId}`);
+      return res.status(400).json({ error: 'Invalid key' });
+    }
+
+    const keyData = keySnap.data()!;
+
+    if (keyData.userId && keyData.userId !== userId) {
+      console.warn(`[API] Key ${key} owned by ${keyData.userId}, but user ${userId} tried to activate it`);
+      return res.status(400).json({ error: 'Key already used by another user' });
+    }
+    if (keyData.status === 'inactive') {
+      console.warn(`[API] Deactivated key ${key} attempted by user ${userId}`);
+      return res.status(400).json({ error: 'This key has been deactivated by an admin' });
+    }
+    if (!isValidPlan(keyData.plan)) {
+      console.error(`[API] Key ${key} has an invalid/missing plan in Firestore: ${keyData.plan}`);
+      return res.status(400).json({ error: 'This key is misconfigured. Contact support.' });
+    }
+
+    const plan = keyData.plan;
+
+    // Read existing user metadata to preserve/stack entitlements
     const userDoc = await firestore.collection('users').doc(userId).get();
     const existingUserData = userDoc.exists ? userDoc.data() : null;
-
-    // Normalize old schema into new entitlements
     const normalized = normalizeEntitlements(existingUserData);
-    console.log(`[API] Normalized entitlements before activation: plan=${normalized.plan}, classes=[${Object.keys(normalized.classEntitlements).join(', ')}], aio=${normalized.aioExpires ? 'yes' : 'no'}`);
 
-    // Determine plan: explicit request > existing normalized plan > default 'none'
-    const plan = reqPlan || normalized.plan;
-    console.log(`[API] Plan resolution: existing=${normalized.plan}, req=${reqPlan || '(none)'}, resolved=${plan}`);
+    // A key can come pre-bound to a specific class (set when it was issued),
+    // or be a generic single-class key where the class is chosen at
+    // activation - still validated against the real class list, never
+    // trusted verbatim. Falls back to renewing the user's existing single
+    // class if neither is present.
+    const existingSingleClass = Object.keys(normalized.classEntitlements).length === 1
+      ? Object.keys(normalized.classEntitlements)[0]
+      : null;
+    const className = plan === 'single'
+      ? (keyData.className || (isValidClassName(reqClassName) ? reqClassName : null) || existingSingleClass)
+      : null;
+
+    if (plan === 'single' && !className) {
+      return res.status(400).json({ error: 'A valid class name is required for this key' });
+    }
+
+    console.log(`[API] Key ${key} resolved: plan=${plan}, className=${className || '(none)'}`);
 
     const days = plan === 'trial' ? 3 : 30;
 
-    // Stacked expiration: MAX(current, now) + duration
     const prevAioExp = timestampToDate(existingUserData?.aioExpires);
     const aioExpirationDate = calculateStackedExpiration(existingUserData?.aioExpires, days);
     const aioExpirationTimestamp = Timestamp.fromDate(aioExpirationDate);
 
-    const prevReqClassExp = timestampToDate(normalized.classEntitlements[reqClassName]?.expires);
-    const reqClassExpirationDate = calculateStackedExpiration(normalized.classEntitlements[reqClassName]?.expires, days);
-    const reqClassExpirationTimestamp = Timestamp.fromDate(reqClassExpirationDate);
-
-    const existingSingleClass = Object.keys(normalized.classEntitlements).length === 1
-      ? Object.keys(normalized.classEntitlements)[0]
-      : null;
-    const prevSingleClassExp = timestampToDate(existingSingleClass ? normalized.classEntitlements[existingSingleClass]?.expires : null);
-    const singleClassExpirationDate = calculateStackedExpiration(
-      existingSingleClass ? normalized.classEntitlements[existingSingleClass]?.expires : null,
+    const prevClassExp = timestampToDate(className ? normalized.classEntitlements[className]?.expires : null);
+    const classExpirationDate = calculateStackedExpiration(
+      className ? normalized.classEntitlements[className]?.expires : null,
       days
     );
-    const singleClassExpirationTimestamp = Timestamp.fromDate(singleClassExpirationDate);
+    const classExpirationTimestamp = Timestamp.fromDate(classExpirationDate);
 
-    console.log(`[API] Processing key ${key}. Exists: ${keySnap.exists}. duration=${days}d, prevAio=${prevAioExp?.toISOString() || 'none'}, prevReqClass=${prevReqClassExp?.toISOString() || 'none'}, prevSingleClass=${prevSingleClassExp?.toISOString() || 'none'}, now=${new Date().toISOString()}, newAio=${aioExpirationDate.toISOString()}, newReqClass=${reqClassExpirationDate.toISOString()}, newSingleClass=${singleClassExpirationDate.toISOString()}`);
+    console.log(`[API] duration=${days}d, prevAio=${prevAioExp?.toISOString() || 'none'}, prevClass=${prevClassExp?.toISOString() || 'none'}, now=${new Date().toISOString()}, newAio=${aioExpirationDate.toISOString()}, newClass=${classExpirationDate.toISOString()}`);
 
     const batch = firestore.batch();
 
-    if (keySnap.exists) {
-      const keyData = keySnap.data();
-      console.log(`[API] Existing key data:`, keyData);
-
-      if (keyData?.userId && keyData.userId !== userId) {
-        console.warn(`[API] Key ${key} owned by ${keyData.userId}, but user ${userId} tried to activate it`);
-        return res.status(400).json({ error: 'Key already used by another user' });
-      }
-      if (keyData?.status === 'inactive') {
-        console.warn(`[API] Deactivated key ${key} attempted by user ${userId}`);
-        return res.status(400).json({ error: 'This key has been deactivated by an admin' });
-      }
-
-      batch.update(keyRef, {
-        userId,
-        status: 'active',
-        lastUsedAt: FieldValue.serverTimestamp(),
-        updatedAt: FieldValue.serverTimestamp(),
-        ...(reqClassName ? { className: reqClassName } : {})
-      });
-    } else {
-      console.log(`[API] Creating new key record for ${key}`);
-      batch.set(keyRef, {
-        key,
-        userId,
-        plan,
-        status: 'active',
-        createdAt: FieldValue.serverTimestamp(),
-        lastUsedAt: FieldValue.serverTimestamp(),
-        updatedAt: FieldValue.serverTimestamp(),
-        expiresAt: (plan === 'aio' || plan === 'trial') ? aioExpirationTimestamp : reqClassName ? reqClassExpirationTimestamp : singleClassExpirationTimestamp,
-        ...(reqClassName ? { className: reqClassName } : {})
-      });
-    }
+    batch.update(keyRef, {
+      userId,
+      status: 'active',
+      lastUsedAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp()
+    });
 
     const userRef = firestore.collection('users').doc(userId);
 
     if (plan === 'aio' || plan === 'trial') {
-      // AIO or trial: update aioExpires, preserve classEntitlements
       batch.set(userRef, {
         plan,
         accountStatus: 'active',
         isAio: true,
         aioExpires: aioExpirationTimestamp,
         updatedAt: FieldValue.serverTimestamp(),
-        // AIO fully replaces single-class entitlements
         classEntitlements: FieldValue.delete(),
         ...(normalized.migrated || existingUserData?.selectedClass ? { selectedClass: FieldValue.delete() } : {})
       }, { merge: true });
       console.log(`[API] AIO/Trial activation: stacked aioExpires=${aioExpirationDate.toISOString()}, cleared classEntitlements`);
-    } else if (plan === 'single' && reqClassName) {
-      // Single class activation: add/update only this class
-      const classEntitlements = {
-        ...normalized.classEntitlements,
-        [reqClassName]: {
-          expires: reqClassExpirationTimestamp,
-          updatedAt: FieldValue.serverTimestamp()
-        }
-      };
-      batch.set(userRef, {
-        plan: 'single',
-        accountStatus: 'active',
-        isAio: false,
-        classEntitlements,
-        updatedAt: FieldValue.serverTimestamp(),
-        ...(normalized.migrated ? { selectedClass: FieldValue.delete() } : {})
-      }, { merge: true });
-      console.log(`[API] Single-class activation: stacked class=${reqClassName}, expires=${reqClassExpirationDate.toISOString()}, totalClasses=${Object.keys(classEntitlements).length}`);
-    } else if (plan === 'single' && existingSingleClass) {
-      // Single plan, no explicit class, exactly one existing class: renew it
-      const classEntitlements = {
-        ...normalized.classEntitlements,
-        [existingSingleClass]: {
-          expires: singleClassExpirationTimestamp,
-          updatedAt: FieldValue.serverTimestamp()
-        }
-      };
-      batch.set(userRef, {
-        plan: 'single',
-        accountStatus: 'active',
-        isAio: false,
-        classEntitlements,
-        updatedAt: FieldValue.serverTimestamp(),
-        ...(normalized.migrated ? { selectedClass: FieldValue.delete() } : {})
-      }, { merge: true });
-      console.log(`[API] Single-class renewal: stacked class=${existingSingleClass}, expires=${singleClassExpirationDate.toISOString()}`);
     } else {
-      // Fallback: generic activation without specific class info
+      const classEntitlements = {
+        ...normalized.classEntitlements,
+        [className!]: {
+          expires: classExpirationTimestamp,
+          updatedAt: FieldValue.serverTimestamp()
+        }
+      };
       batch.set(userRef, {
-        plan,
+        plan: 'single',
         accountStatus: 'active',
-        isAio: plan === 'aio',
-        expiresAt: aioExpirationTimestamp,
+        isAio: false,
+        classEntitlements,
         updatedAt: FieldValue.serverTimestamp(),
         ...(normalized.migrated ? { selectedClass: FieldValue.delete() } : {})
       }, { merge: true });
-      console.log(`[API] Generic activation: plan=${plan}, stacked expiresAt=${aioExpirationDate.toISOString()}`);
+      console.log(`[API] Single-class activation: class=${className}, expires=${classExpirationDate.toISOString()}, totalClasses=${Object.keys(classEntitlements).length}`);
     }
 
     await batch.commit();
-    console.log(`[API] Activation committed. userId=${userId}, plan=${plan}, className=${reqClassName || '(none)'}`);
-
-    // Verify key is readable before GitHub sync
-    console.log(`[API] Verifying key ${key} is readable in Firestore...`);
-    const keyVerify = await firestore.collection('cd_keys').doc(key).get();
-    console.log(`[API] Post-commit key read: exists=${keyVerify.exists}, id=${keyVerify.id}, data=${JSON.stringify(keyVerify.data())}`);
+    console.log(`[API] Activation committed. userId=${userId}, plan=${plan}, className=${className || '(none)'}`);
 
     syncDiscord(userId, plan).catch(err => console.error('[Discord Sync Error]', err));
 
@@ -186,8 +153,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       githubSyncFailed,
       githubSync: githubResult || { success: false, error: 'No result' },
       plan,
-      expiresAt: (plan === 'single' && reqClassName ? reqClassExpirationDate : plan === 'single' && existingSingleClass ? singleClassExpirationDate : aioExpirationDate).toISOString(),
-      className: reqClassName || null
+      expiresAt: (plan === 'single' ? classExpirationDate : aioExpirationDate).toISOString(),
+      className: className || null
     });
   } catch (err: any) {
     console.error('[Activation Error]', err);
