@@ -536,17 +536,18 @@ export function Dashboard({ onUpgrade, targetUserId }: DashboardProps) {
                   );
                 })()}
 
-                {/* Subscription Status */}
-                {userData?.subscriptionId && (
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-black text-white/25 uppercase tracking-widest">Subscription</span>
-                      <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border ${userData?.subscriptionStatus === 'active' ? 'bg-green-500/10 text-green-500 border-green-500/20' : 'bg-white/5 text-white/40 border-white/10'}`}>
-                        {userData?.subscriptionStatus === 'active' ? 'Auto-Renews' : userData?.subscriptionStatus === 'cancelled' ? 'Cancelled' : userData?.subscriptionStatus === 'suspended' ? 'Suspended' : userData?.subscriptionStatus === 'expired' ? 'Expired' : 'Unknown'}
-                      </span>
-                    </div>
-                    {userData?.subscriptionStatus === 'active' && (
-                      showCancelConfirm ? (
+                {/* Subscription Status - always shown, button greyed out when there's nothing to cancel */}
+                {(() => {
+                  const canCancel = userData?.subscriptionStatus === 'active';
+                  return (
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-black text-white/25 uppercase tracking-widest">Subscription</span>
+                        <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border ${canCancel ? 'bg-green-500/10 text-green-500 border-green-500/20' : 'bg-white/5 text-white/40 border-white/10'}`}>
+                          {userData?.subscriptionStatus === 'active' ? 'Auto-Renews' : userData?.subscriptionStatus === 'cancelled' ? 'Cancelled' : userData?.subscriptionStatus === 'suspended' ? 'Suspended' : userData?.subscriptionStatus === 'expired' ? 'Expired' : 'None'}
+                        </span>
+                      </div>
+                      {showCancelConfirm ? (
                         <div className="space-y-2 p-3 rounded-lg border border-[#dc3545]/30 bg-[#dc3545]/5">
                           <p className="text-[10px] font-bold text-white/60 text-center">
                             Cancel your subscription? You'll keep access until your current period ends, but it won't auto-renew.
@@ -571,14 +572,16 @@ export function Dashboard({ onUpgrade, targetUserId }: DashboardProps) {
                       ) : (
                         <button
                           onClick={() => setShowCancelConfirm(true)}
-                          className="w-full py-3 bg-[#dc3545] hover:bg-[#bb2d3b] text-white text-xs font-black uppercase tracking-widest rounded-lg transition-all"
+                          disabled={!canCancel}
+                          title={canCancel ? undefined : 'No active subscription to cancel'}
+                          className="w-full py-3 bg-[#dc3545] hover:bg-[#bb2d3b] text-white text-xs font-black uppercase tracking-widest rounded-lg transition-all disabled:opacity-30 disabled:hover:bg-[#dc3545] disabled:cursor-not-allowed"
                         >
                           Cancel Subscription
                         </button>
-                      )
-                    )}
-                  </div>
-                )}
+                      )}
+                    </div>
+                  );
+                })()}
 
                 {/* Class Entitlements — hidden when AIO active */}
                 {(() => {
