@@ -115,5 +115,9 @@ service cloud.firestore {
     match /test/{docId} {
       allow read: if true;
     }
+
+    match /_health/{docId} {
+      allow read, write: if true;
+    }
   }
 }
