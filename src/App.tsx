@@ -235,38 +235,13 @@ export default function App() {
 
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const total = cart.reduce((acc, item) => acc + item.price, 0);
-  const [isDiscordLinked, setIsDiscordLinked] = useState(false);
-
-  useEffect(() => {
-    const handleMessage = async (event: MessageEvent) => {
-      // More flexible origin check for AI Studio environments
-      const isAllowedOrigin = 
-        event.origin.endsWith('.run.app') || 
-        event.origin.includes('localhost') || 
-        event.origin.includes('google.com') ||
-        event.origin.includes('webcontainer.io');
-        
-      if (!isAllowedOrigin) return;
-      
-      if (event.data?.type === 'DISCORD_AUTH_SUCCESS' && user) {
-        const discordId = event.data.discordId;
-        console.log(`[Discord] Received success message for ${discordId}`);
-        try {
-          const { updateDoc, doc, serverTimestamp } = await import('firebase/firestore');
-          await updateDoc(doc(db, 'users', user.uid), {
-            discordId: discordId,
-            updatedAt: serverTimestamp()
-          });
-          setIsDiscordLinked(true);
-          setLastAdded("Account Linked!");
-        } catch (err) {
-          console.error("Failed to link discord client-side:", err);
-        }
-      }
-    };
-    window.addEventListener('message', handleMessage);
-    return () => window.removeEventListener('message', handleMessage);
-  }, [user]);
+  // Derived directly from Firestore, never local state that can drift out of
+  // sync: the Discord link flow does a full-page redirect (not a popup), so
+  // window.opener is always null in the OAuth callback and the postMessage
+  // path this used to rely on never actually fires - isDiscordLinked stayed
+  // false forever even after a real, successful link, which showed up as
+  // "Link Discord" looping indefinitely for anyone who'd already linked.
+  const isDiscordLinked = !!userData?.discordId;
 
   const toggleCart = () => setIsCartOpen(!isCartOpen);
 
