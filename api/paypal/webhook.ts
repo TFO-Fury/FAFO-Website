@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { getDb, FieldValue, Timestamp } from '../_lib/firebase-admin.js';
-import { verifyWebhookSignature, capturePayPalOrder } from '../_lib/paypal.js';
+import { verifyWebhookSignature, capturePayPalOrder, getSubscriptionDetails } from '../_lib/paypal.js';
 import { triggerLicenseSync } from '../_lib/github.js';
 import { syncDiscord } from '../_lib/discord.js';
 import { calculateStackedExpiration, timestampToDate } from '../_lib/entitlements.js';
@@ -50,17 +50,40 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const subscriptionId = resource.billing_agreement_id;
       const saleId = resource.id;
 
-      const usersQuery = await firestore.collection('users')
+      let userDoc = (await firestore.collection('users')
         .where('subscriptionId', '==', subscriptionId)
         .limit(1)
-        .get();
+        .get()).docs[0];
 
-      if (usersQuery.empty) {
-        console.warn(`[PayPalWebhook] No user found for subscription ${subscriptionId} (sale ${saleId})`);
+      // Self-healing fallback: if confirm-subscription.ts (the client-driven
+      // path) never ran - network hiccup, the tab closed early, a bug, etc -
+      // no user has this subscriptionId recorded, even though PayPal already
+      // charged them. This happened in production: a customer was charged
+      // twice with zero entitlement granted, because this handler used to
+      // just log a warning and give up when it couldn't find a match. Ask
+      // PayPal directly for the subscription's custom_id (the userId set at
+      // creation) and recover instead of silently dropping a real payment.
+      if (!userDoc) {
+        try {
+          const subscription = await getSubscriptionDetails(subscriptionId);
+          const fallbackUserId = subscription.custom_id;
+          if (fallbackUserId) {
+            const snap = await firestore.collection('users').doc(fallbackUserId).get();
+            if (snap.exists) {
+              userDoc = snap as any;
+              console.warn(`[PayPalWebhook] Recovered orphaned subscription ${subscriptionId} -> user ${fallbackUserId} via custom_id fallback`);
+            }
+          }
+        } catch (err: any) {
+          console.error(`[PayPalWebhook] custom_id fallback lookup failed for subscription ${subscriptionId}:`, err);
+        }
+      }
+
+      if (!userDoc) {
+        console.warn(`[PayPalWebhook] No user found for subscription ${subscriptionId} (sale ${saleId}), even after custom_id fallback`);
         return;
       }
 
-      const userDoc = usersQuery.docs[0];
       const userRef = userDoc.ref;
       const userData = userDoc.data();
 
@@ -85,6 +108,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         aioExpires: aioExpirationTimestamp,
         classEntitlements: FieldValue.delete(),
         selectedClass: FieldValue.delete(),
+        subscriptionId,
         subscriptionStatus: 'active',
         updatedAt: FieldValue.serverTimestamp()
       }, { merge: true });
