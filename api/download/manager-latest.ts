@@ -27,28 +27,39 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // 1. Fetch releases and pick the newest manager-* one. NOTE: GitHub's /releases list endpoint
     // does NOT reliably return newest-first (confirmed empirically -- a release published hours
     // after another one showed up in the MIDDLE of the list, not first), so this sorts by
-    // created_at explicitly rather than trusting API order.
+    // created_at explicitly rather than trusting API order. The repo's main bundle pipeline
+    // (release-*) publishes far more often than the manager (manager-*), so a single page of 20
+    // isn't enough -- it can push the last manager-* release off the page entirely. Paginate
+    // through up to 10 pages (1000 releases) before giving up.
     console.log(`[ManagerDownloadProxy] Fetching releases for ${GITHUB_REPO}`);
-    const releasesRes = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/releases?per_page=20`, {
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Accept': 'application/vnd.github+json',
-        'X-GitHub-Api-Version': '2022-11-28',
-        'User-Agent': 'FAFO-Download-Proxy/1.0'
-      }
-    });
+    const releases: any[] = [];
+    for (let page = 1; page <= 10; page++) {
+      const releasesRes = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/releases?per_page=100&page=${page}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Accept': 'application/vnd.github+json',
+          'X-GitHub-Api-Version': '2022-11-28',
+          'User-Agent': 'FAFO-Download-Proxy/1.0'
+        }
+      });
 
-    if (!releasesRes.ok) {
-      const errorBody = await releasesRes.text();
-      console.error(`[ManagerDownloadProxy] GitHub releases fetch failed: ${releasesRes.status}`, errorBody);
-      if (releasesRes.status === 401 || releasesRes.status === 403) {
-        return res.status(502).json({ error: 'GitHub authentication failed. Check GITHUB_TOKEN.' });
+      if (!releasesRes.ok) {
+        const errorBody = await releasesRes.text();
+        console.error(`[ManagerDownloadProxy] GitHub releases fetch failed: ${releasesRes.status}`, errorBody);
+        if (releasesRes.status === 401 || releasesRes.status === 403) {
+          return res.status(502).json({ error: 'GitHub authentication failed. Check GITHUB_TOKEN.' });
+        }
+        return res.status(502).json({ error: 'Failed to fetch release info from GitHub' });
       }
-      return res.status(502).json({ error: 'Failed to fetch release info from GitHub' });
+
+      const pageReleases: any[] = await releasesRes.json();
+      releases.push(...pageReleases);
+
+      const hasManagerRelease = pageReleases.some(r => typeof r.tag_name === 'string' && r.tag_name.startsWith('manager-'));
+      if (hasManagerRelease || pageReleases.length < 100) break;
     }
 
-    const releases = await releasesRes.json();
-    const release = (releases as any[])
+    const release = releases
       .filter(r => typeof r.tag_name === 'string' && r.tag_name.startsWith('manager-'))
       .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0];
 
