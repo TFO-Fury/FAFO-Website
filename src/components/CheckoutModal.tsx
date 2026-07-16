@@ -386,6 +386,7 @@ export function CheckoutModal({ isOpen, onClose, user, userData, cart, total, is
                             return (
                               <PayPalSubscribeButton
                                 userId={user?.uid}
+                                user={user}
                                 onSuccess={(result) => {
                                   console.log('[CheckoutModal] Subscription confirmed:', result);
                                   setStep('success');
@@ -440,6 +441,7 @@ export function CheckoutModal({ isOpen, onClose, user, userData, cart, total, is
                               return (
                                 <PayPalSubscribeButton
                                   userId={user?.uid}
+                                  user={user}
                                   onSuccess={(result) => {
                                     console.log('[CheckoutModal] Subscription confirmed:', result);
                                     setStep('success');

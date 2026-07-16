@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 
 interface PayPalSubscribeButtonProps {
   userId: string;
+  user: any;
   onSuccess: (details: any) => void;
   onError: (error: any) => void;
 }
@@ -31,7 +32,7 @@ function loadPayPalSubscriptionScript(clientId: string): Promise<void> {
   });
 }
 
-export default function PayPalSubscribeButton({ userId, onSuccess, onError }: PayPalSubscribeButtonProps) {
+export default function PayPalSubscribeButton({ userId, user, onSuccess, onError }: PayPalSubscribeButtonProps) {
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [paypalReady, setPaypalReady] = useState(false);
@@ -73,9 +74,13 @@ export default function PayPalSubscribeButton({ userId, onSuccess, onError }: Pa
       },
       onApprove: async (data: any) => {
         try {
+          const idToken = await user.getIdToken();
           const res = await fetch('/api/paypal/confirm-subscription', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${idToken}`
+            },
             body: JSON.stringify({ userId, subscriptionId: data.subscriptionID })
           });
           const result = await res.json();
