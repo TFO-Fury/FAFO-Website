@@ -4,7 +4,7 @@ import { getDb, FieldValue, Timestamp } from '../_lib/firebase-admin.js';
 import { syncDiscord } from '../_lib/discord.js';
 import { triggerLicenseSync } from '../_lib/github.js';
 import { normalizeEntitlements, timestampToDate, calculateStackedExpiration } from '../_lib/entitlements.js';
-import { isValidPlan, isValidClassName } from '../_lib/pricing.js';
+import { isValidClassName } from '../_lib/pricing.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
@@ -25,56 +25,41 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const keyRef = firestore.collection('cd_keys').doc(key);
     const keySnap = await keyRef.get();
 
-    // Keys are issued externally, never generated through this site - so
-    // activation can only ever redeem a key that already exists, using the
-    // plan it was actually issued with. Never trust a client-supplied plan:
-    // a nonexistent key used to just get silently created on the spot with
-    // whatever plan the request claimed, which meant anyone could POST a
-    // made-up key string with plan: 'aio' and get free access.
-    if (!keySnap.exists) {
-      console.warn(`[API] Activation attempted with unknown key ${key} by user ${userId}`);
-      return res.status(400).json({ error: 'Invalid key' });
+    // cd_keys documents are device/installation identifiers, not prepaid
+    // codes - manager/verify.ts never reads a key's own plan/status for
+    // license validity, only keyData.userId to look up the account's real
+    // entitlements. So linking a brand-new key here is legitimate and must
+    // keep working. What must NEVER happen is trusting a plan from the
+    // request body or from the key doc itself to decide what to grant -
+    // that was the actual vulnerability (anyone could POST a made-up key
+    // with plan: "aio" in the body and get free access). The only source of
+    // truth for what to grant is the account's own existing entitlements.
+    if (keySnap.exists) {
+      const keyData = keySnap.data()!;
+      if (keyData.userId && keyData.userId !== userId) {
+        console.warn(`[API] Key ${key} owned by ${keyData.userId}, but user ${userId} tried to activate it`);
+        return res.status(400).json({ error: 'Key already used by another user' });
+      }
+      if (keyData.status === 'inactive') {
+        console.warn(`[API] Deactivated key ${key} attempted by user ${userId}`);
+        return res.status(400).json({ error: 'This key has been deactivated by an admin' });
+      }
     }
-
-    const keyData = keySnap.data()!;
-
-    if (keyData.userId && keyData.userId !== userId) {
-      console.warn(`[API] Key ${key} owned by ${keyData.userId}, but user ${userId} tried to activate it`);
-      return res.status(400).json({ error: 'Key already used by another user' });
-    }
-    if (keyData.status === 'inactive') {
-      console.warn(`[API] Deactivated key ${key} attempted by user ${userId}`);
-      return res.status(400).json({ error: 'This key has been deactivated by an admin' });
-    }
-    if (!isValidPlan(keyData.plan)) {
-      console.error(`[API] Key ${key} has an invalid/missing plan in Firestore: ${keyData.plan}`);
-      return res.status(400).json({ error: 'This key is misconfigured. Contact support.' });
-    }
-
-    const plan = keyData.plan;
 
     // Read existing user metadata to preserve/stack entitlements
     const userDoc = await firestore.collection('users').doc(userId).get();
     const existingUserData = userDoc.exists ? userDoc.data() : null;
     const normalized = normalizeEntitlements(existingUserData);
+    const plan = normalized.plan;
 
-    // A key can come pre-bound to a specific class (set when it was issued),
-    // or be a generic single-class key where the class is chosen at
-    // activation - still validated against the real class list, never
-    // trusted verbatim. Falls back to renewing the user's existing single
-    // class if neither is present.
     const existingSingleClass = Object.keys(normalized.classEntitlements).length === 1
       ? Object.keys(normalized.classEntitlements)[0]
       : null;
     const className = plan === 'single'
-      ? (keyData.className || (isValidClassName(reqClassName) ? reqClassName : null) || existingSingleClass)
+      ? ((isValidClassName(reqClassName) ? reqClassName : null) || existingSingleClass)
       : null;
 
-    if (plan === 'single' && !className) {
-      return res.status(400).json({ error: 'A valid class name is required for this key' });
-    }
-
-    console.log(`[API] Key ${key} resolved: plan=${plan}, className=${className || '(none)'}`);
+    console.log(`[API] Key ${key} resolved from account's own entitlements: plan=${plan}, className=${className || '(none)'}`);
 
     const days = plan === 'trial' ? 3 : 30;
 
@@ -93,12 +78,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const batch = firestore.batch();
 
-    batch.update(keyRef, {
+    batch.set(keyRef, {
+      key,
       userId,
+      plan,
       status: 'active',
       lastUsedAt: FieldValue.serverTimestamp(),
-      updatedAt: FieldValue.serverTimestamp()
-    });
+      updatedAt: FieldValue.serverTimestamp(),
+      ...(keySnap.exists ? {} : { createdAt: FieldValue.serverTimestamp() }),
+      ...(className ? { className } : {})
+    }, { merge: true });
 
     const userRef = firestore.collection('users').doc(userId);
 
@@ -113,10 +102,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         ...(normalized.migrated || existingUserData?.selectedClass ? { selectedClass: FieldValue.delete() } : {})
       }, { merge: true });
       console.log(`[API] AIO/Trial activation: stacked aioExpires=${aioExpirationDate.toISOString()}, cleared classEntitlements`);
-    } else {
+    } else if (plan === 'single' && className) {
       const classEntitlements = {
         ...normalized.classEntitlements,
-        [className!]: {
+        [className]: {
           expires: classExpirationTimestamp,
           updatedAt: FieldValue.serverTimestamp()
         }
@@ -130,6 +119,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         ...(normalized.migrated ? { selectedClass: FieldValue.delete() } : {})
       }, { merge: true });
       console.log(`[API] Single-class activation: class=${className}, expires=${classExpirationDate.toISOString()}, totalClasses=${Object.keys(classEntitlements).length}`);
+    } else {
+      // plan === 'none': nothing to grant. Still link the key to the account
+      // (harmless - the manager will correctly report no active license via
+      // this account's real entitlements) so the device is registered for
+      // whenever they do purchase.
+      console.log(`[API] Key ${key} linked to ${userId} with no active plan - nothing to grant.`);
     }
 
     await batch.commit();
@@ -153,7 +148,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       githubSyncFailed,
       githubSync: githubResult || { success: false, error: 'No result' },
       plan,
-      expiresAt: (plan === 'single' ? classExpirationDate : aioExpirationDate).toISOString(),
+      expiresAt: (plan === 'single' && className ? classExpirationDate : aioExpirationDate).toISOString(),
       className: className || null
     });
   } catch (err: any) {
