@@ -394,6 +394,7 @@ export function AdminPanel({ onViewUser }: AdminPanelProps) {
                     <th className="px-5 py-4 text-[10px] font-black uppercase tracking-widest text-white/20 w-[100px]">Status</th>
                     <th className="px-5 py-4 text-[10px] font-black uppercase tracking-widest text-white/20 w-[160px]">Expires</th>
                     <th className="px-5 py-4 text-[10px] font-black uppercase tracking-widest text-white/20 w-[160px]">Discord</th>
+                    <th className="px-5 py-4 text-[10px] font-black uppercase tracking-widest text-white/20 w-[100px]">Key</th>
                     <th className="px-5 py-4 text-[10px] font-black uppercase tracking-widest text-white/20 text-right">Actions</th>
                   </tr>
                 </thead>
@@ -658,6 +659,21 @@ export function AdminPanel({ onViewUser }: AdminPanelProps) {
                                     <div className="flex items-center gap-1.5">
                                       <span className="w-1.5 h-1.5 rounded-full bg-white/10 flex-shrink-0" />
                                       <span className="text-[10px] text-white/20">Not Linked</span>
+                                    </div>
+                                  )}
+                                </td>
+
+                                {/* Key Column */}
+                                <td className="px-5 py-3 w-[100px]">
+                                  {allKeys.some(k => k.userId === user?.id) ? (
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="w-1.5 h-1.5 rounded-full bg-green-500 flex-shrink-0" />
+                                      <span className="text-[10px] font-bold text-white/60">Added</span>
+                                    </div>
+                                  ) : (
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="w-1.5 h-1.5 rounded-full bg-white/10 flex-shrink-0" />
+                                      <span className="text-[10px] text-white/20">None</span>
                                     </div>
                                   )}
                                 </td>
