@@ -103,7 +103,7 @@ export async function cancelSubscription(subscriptionId: string, reason: string)
 
 export async function verifyWebhookSignature(
   transmissionId: string,
-  certId: string,
+  certUrl: string,
   authAlgo: string,
   transmissionTime: string,
   transmissionSig: string,
@@ -124,7 +124,7 @@ export async function verifyWebhookSignature(
       },
       body: JSON.stringify({
         auth_algo: authAlgo,
-        cert_id: certId,
+        cert_url: certUrl,
         transmission_id: transmissionId,
         transmission_sig: transmissionSig,
         transmission_time: transmissionTime,

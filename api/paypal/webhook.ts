@@ -15,13 +15,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   // Webhook verification
   const transmissionId = headers['paypal-transmission-id'] as string;
-  const certId = headers['paypal-cert-id'] as string;
+  const certUrl = headers['paypal-cert-url'] as string;
   const authAlgo = headers['paypal-auth-algo'] as string;
   const transmissionTime = headers['paypal-transmission-time'] as string;
   const transmissionSig = headers['paypal-transmission-sig'] as string;
 
   const verified = await verifyWebhookSignature(
-    transmissionId, certId, authAlgo, transmissionTime, transmissionSig, body
+    transmissionId, certUrl, authAlgo, transmissionTime, transmissionSig, body
   );
 
   if (!verified) {

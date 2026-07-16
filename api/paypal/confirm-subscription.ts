@@ -46,16 +46,28 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json({ success: true, alreadyConfirmed: true });
     }
 
-    const subscription = await getSubscriptionDetails(subscriptionId);
+    // PayPal can take a moment to reflect ACTIVE status right after
+    // actions.subscription.create() resolves client-side - retry briefly
+    // instead of failing the very first poll (this caused a real customer's
+    // payment to grant zero access with no server-side error logged, since
+    // the webhook fallback that should have caught it was separately broken).
+    let subscription = await getSubscriptionDetails(subscriptionId);
+    for (let attempt = 0; attempt < 3 && subscription.status !== 'ACTIVE'; attempt++) {
+      await new Promise(r => setTimeout(r, 1500));
+      subscription = await getSubscriptionDetails(subscriptionId);
+    }
 
     const expectedPlanId = process.env.PAYPAL_AIO_PLAN_ID;
     if (!expectedPlanId || subscription.plan_id !== expectedPlanId) {
+      console.warn(`[ConfirmSubscription] Plan mismatch for userId=${userId}, subscriptionId=${subscriptionId}: got ${subscription.plan_id}, expected ${expectedPlanId}`);
       return res.status(400).json({ error: 'Subscription is not for the expected plan' });
     }
     if (subscription.custom_id !== userId) {
+      console.warn(`[ConfirmSubscription] Owner mismatch for subscriptionId=${subscriptionId}: custom_id=${subscription.custom_id}, requested userId=${userId}`);
       return res.status(403).json({ error: 'Subscription does not belong to this user' });
     }
     if (subscription.status !== 'ACTIVE') {
+      console.warn(`[ConfirmSubscription] Subscription ${subscriptionId} for userId=${userId} still not ACTIVE after retries (status: ${subscription.status})`);
       return res.status(400).json({ error: `Subscription is not active (status: ${subscription.status})` });
     }
 
