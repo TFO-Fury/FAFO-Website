@@ -20,6 +20,7 @@ const SPEC_TO_CLASS: Record<string, string> = {
   'Paladin-Retribution': 'paladin',
   'Priest-Discipline': 'priest',
   'Warrior-Arms': 'warrior',
+  'Warrior-Fury': 'warrior',
   'Shaman-Enhancement': 'shaman',
   'Shaman-Elemental': 'shaman',
 };
