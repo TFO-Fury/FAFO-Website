@@ -25,6 +25,7 @@ const SPEC_TO_CLASS: Record<string, string> = {
   'Evoker-Devastation': 'evoker',
   'Shaman-Enhancement': 'shaman',
   'Shaman-Elemental': 'shaman',
+  'Druid-Guardian': 'druid',
 };
 
 // Simple in-memory rate limiter (per-function-instance, best-effort for serverless) — same shape
