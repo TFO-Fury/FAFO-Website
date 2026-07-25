@@ -22,6 +22,7 @@ const SPEC_TO_CLASS: Record<string, string> = {
   'Warrior-Arms': 'warrior',
   'Warrior-Fury': 'warrior',
   'Evoker-Preservation': 'evoker',
+  'Evoker-Devastation': 'evoker',
   'Shaman-Enhancement': 'shaman',
   'Shaman-Elemental': 'shaman',
 };
