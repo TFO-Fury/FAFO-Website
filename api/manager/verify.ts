@@ -14,6 +14,7 @@ import { normalizeEntitlements, isAioActive, getActiveClasses, timestampToDate }
 // tools/specs.json's assetClass, lowercased, is the class key normalizeEntitlements() keys on.
 const SPEC_TO_CLASS: Record<string, string> = {
   'Hunter-BeastMastery': 'hunter',
+  'Hunter-Survival': 'hunter',
   'DeathKnight-Unholy': 'deathknight',
   'Monk-Mistweaver': 'monk',
   'Paladin-Holy': 'paladin',
