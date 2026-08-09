@@ -22,6 +22,7 @@ const SPEC_TO_CLASS: Record<string, string> = {
   'Paladin-Holy': 'paladin',
   'Paladin-Retribution': 'paladin',
   'Priest-Discipline': 'priest',
+  'Priest-Holy': 'priest',
   'Warrior-Arms': 'warrior',
   'Warrior-Fury': 'warrior',
   'Warlock-Destruction': 'warlock',
