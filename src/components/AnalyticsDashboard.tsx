@@ -136,11 +136,14 @@ export default function AnalyticsDashboard() {
             <h3 className="text-xs font-black uppercase tracking-widest text-white/40">Daily Revenue</h3>
             <span className="text-[10px] font-bold text-white/20 tabular-nums">{dailyEntries.length} days</span>
           </div>
-          <div className="flex items-end gap-1 h-40 overflow-x-auto">
+          <div className="flex items-end gap-1 h-48 overflow-x-auto">
             {dailyEntries.map(([date, amount]) => {
               const h = Math.max(4, (amount / maxDaily) * 100);
               return (
-                <div key={date} className="flex-1 min-w-[24px] flex flex-col items-center gap-1">
+                <div key={date} className="flex-1 min-w-[32px] flex flex-col items-center justify-end gap-1 h-full">
+                  <span className="text-[9px] font-black text-primary/80 tabular-nums whitespace-nowrap">
+                    {amount > 0 ? `$${amount.toFixed(0)}` : ''}
+                  </span>
                   <div
                     className="w-full bg-primary/60 hover:bg-primary transition-colors rounded-t"
                     style={{ height: `${h}%` }}
