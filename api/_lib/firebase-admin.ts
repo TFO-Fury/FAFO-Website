@@ -54,13 +54,6 @@ export async function getDb(): Promise<Firestore> {
         console.log(`[Firebase] Connecting to Default Database Instance in Project: "${firebaseProjectId}"`);
         db = getFirestore(firebaseApp);
       }
-
-      try {
-        await db.listCollections();
-        console.log('[Firebase] Admin connection verified.');
-      } catch (e) {
-        console.error('[Firebase] Admin connection test failed:', e);
-      }
     } catch (err) {
       console.error('[Firebase] getDb initialization error:', err);
       throw err;
