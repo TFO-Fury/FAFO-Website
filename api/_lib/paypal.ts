@@ -101,6 +101,36 @@ export async function cancelSubscription(subscriptionId: string, reason: string)
   }
 }
 
+export async function getSaleDetails(saleId: string) {
+  const accessToken = await getAccessToken();
+  const res = await fetch(`${PAYPAL_BASE_URL}/v1/payments/sale/${saleId}`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${accessToken}` }
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`PayPal get sale failed: ${res.status} ${text}`);
+  }
+  return res.json() as Promise<any>;
+}
+
+export async function refundSale(saleId: string) {
+  const accessToken = await getAccessToken();
+  const res = await fetch(`${PAYPAL_BASE_URL}/v1/payments/sale/${saleId}/refund`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${accessToken}`
+    },
+    body: JSON.stringify({})
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(`PayPal refund failed: ${res.status} ${JSON.stringify(data)}`);
+  }
+  return data;
+}
+
 export async function verifyWebhookSignature(
   transmissionId: string,
   certUrl: string,
