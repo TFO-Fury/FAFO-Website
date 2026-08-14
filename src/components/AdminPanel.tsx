@@ -402,7 +402,11 @@ export function AdminPanel({ onViewUser }: AdminPanelProps) {
                   {filteredUsers.map(user => {
                     try {
                       return (
-                              <tr key={user?.id || 'unknown'} className="hover:bg-white/[0.01] transition-colors group">
+                              <tr
+                                key={user?.id || 'unknown'}
+                                onClick={() => { if (user?.id && editingUser !== user?.id) onViewUser(user.id); }}
+                                className="hover:bg-white/[0.04] transition-colors group cursor-pointer"
+                              >
                                 {/* User Column */}
                                 <td className="px-5 py-3">
                                   <div className="flex items-center gap-3">
@@ -679,7 +683,7 @@ export function AdminPanel({ onViewUser }: AdminPanelProps) {
                                 </td>
 
                                 {/* Actions Column */}
-                                <td className="px-5 py-3 text-right">
+                                <td className="px-5 py-3 text-right" onClick={(e) => e.stopPropagation()}>
                                   <div className="flex items-center justify-end gap-1">
                                     {editingUser === user?.id ? (
                                       <button
