@@ -334,7 +334,7 @@ export function AdminPanel({ onViewUser }: AdminPanelProps) {
         </div>
 
         {activeTab !== 'users' && activeTab !== 'cdkeys' && (
-          <AnalyticsDashboard />
+          <AnalyticsDashboard onSelectUser={(email) => { setSearchTerm(email); setActiveTab('users'); }} />
         )}
 
         {activeTab === 'cdkeys' && (

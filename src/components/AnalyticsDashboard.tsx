@@ -22,7 +22,11 @@ const timeFilters = [
   { label: 'This Year', days: 365 }
 ];
 
-export default function AnalyticsDashboard() {
+interface AnalyticsDashboardProps {
+  onSelectUser?: (email: string) => void;
+}
+
+export default function AnalyticsDashboard({ onSelectUser }: AnalyticsDashboardProps) {
   const [data, setData] = useState<RevenueData | null>(null);
   const [orders, setOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -176,11 +180,18 @@ export default function AnalyticsDashboard() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/5">
-                {orders.slice(0, 20).map((o: any) => (
-                  <tr key={o.id} className="hover:bg-white/[0.01] transition-colors">
+                {orders.slice(0, 20).map((o: any) => {
+                  const email = o.email || o.userEmail;
+                  const clickable = !!email && !!onSelectUser;
+                  return (
+                  <tr
+                    key={o.id}
+                    onClick={clickable ? () => onSelectUser!(email) : undefined}
+                    className={`transition-colors ${clickable ? 'hover:bg-white/[0.04] cursor-pointer' : 'hover:bg-white/[0.01]'}`}
+                  >
                     <td className="py-2 text-xs font-bold text-white/60 uppercase">{o.plan}</td>
                     <td className="py-2">
-                      <div className="text-xs font-bold text-white/80">{o.email || o.userEmail || 'Unknown User'}</div>
+                      <div className="text-xs font-bold text-white/80">{email || 'Unknown User'}</div>
                       <div className="text-[9px] font-mono text-white/20 truncate max-w-[140px]">{o.userId || '—'}</div>
                     </td>
                     <td className="py-2 text-xs font-bold text-white/60 tabular-nums">
@@ -204,7 +215,8 @@ export default function AnalyticsDashboard() {
                       {o.createdAt ? new Date(o.createdAt).toLocaleDateString() : '-'}
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>
