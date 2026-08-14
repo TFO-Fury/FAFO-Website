@@ -14,7 +14,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   const dryRun = req.query.dryRun === 'true';
+  const cancelOnly = req.query.cancelOnly === 'true';
   const expectedPlanId = process.env.PAYPAL_AIO_PLAN_ID;
+
+  if (cancelOnly) {
+    try {
+      await cancelSubscription('I-XENL422S5E7U', 'Duplicate subscription, canceling');
+      return res.status(200).json({ success: true, cancelled: 'I-XENL422S5E7U' });
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message });
+    }
+  }
 
   try {
     const subs = await Promise.all(SUBSCRIPTION_IDS.map(id => getSubscriptionDetails(id)));
