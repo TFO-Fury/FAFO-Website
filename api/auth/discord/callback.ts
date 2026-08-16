@@ -85,30 +85,33 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const discordUserId = discordUser.id;
     console.log(`[Discord] Profile fetched: ${discordUser.username} (${discordUserId})`);
 
-    if (userId && userId !== 'undefined') {
-      try {
-        const firestore = await getDb();
-        const userRef = firestore.collection('users').doc(userId);
-        await userRef.set({
-          discordId: discordUserId,
-          discordUsername: discordUser.username,
-          updatedAt: FieldValue.serverTimestamp(),
-        }, { merge: true });
-        console.log(`[Discord] Saved link to Firestore for ${userId}`);
-
-        // Grant whatever Discord role matches the user's ACTUAL entitlements
-        // in Firestore. The client-supplied roleType (from the OAuth state
-        // param, requested at /api/auth/discord/url) is just a URL query
-        // string - anyone could set it to any value ('aio', etc.) with no
-        // purchase at all, so it must never be trusted for role decisions.
-        const userSnap = await userRef.get();
-        const normalized = normalizeEntitlements(userSnap.data());
-        const syncResult = await syncDiscord(userId, normalized.plan);
-        console.log(`[Discord] Role sync after link for ${userId}: requestedRoleType=${roleType}, actualPlan=${normalized.plan}`, syncResult);
-      } catch (err) {
-        console.error(`[Discord] Firestore update / role sync error:`, err);
-      }
+    if (!userId || userId === 'undefined') {
+      throw new Error('Missing user session - please close this window and try linking again from the site.');
     }
+
+    // The Firestore write is the entire point of this callback - if it fails,
+    // the customer must NOT see "Account Linked" (previously this was caught
+    // and only logged server-side while the success page/postMessage still
+    // fired unconditionally, so a customer could see a full success
+    // confirmation while nothing was actually saved).
+    const firestore = await getDb();
+    const userRef = firestore.collection('users').doc(userId);
+    await userRef.set({
+      discordId: discordUserId,
+      discordUsername: discordUser.username,
+      updatedAt: FieldValue.serverTimestamp(),
+    }, { merge: true });
+    console.log(`[Discord] Saved link to Firestore for ${userId}`);
+
+    // Grant whatever Discord role matches the user's ACTUAL entitlements
+    // in Firestore. The client-supplied roleType (from the OAuth state
+    // param, requested at /api/auth/discord/url) is just a URL query
+    // string - anyone could set it to any value ('aio', etc.) with no
+    // purchase at all, so it must never be trusted for role decisions.
+    const userSnap = await userRef.get();
+    const normalized = normalizeEntitlements(userSnap.data());
+    const syncResult = await syncDiscord(userId, normalized.plan);
+    console.log(`[Discord] Role sync after link for ${userId}: requestedRoleType=${roleType}, actualPlan=${normalized.plan}`, syncResult);
 
     const html = `
       <html>
