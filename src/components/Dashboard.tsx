@@ -435,7 +435,7 @@ export function Dashboard({ onUpgrade, targetUserId }: DashboardProps) {
               disabled={isSaving}
               className="px-8 h-10 rounded-xl bg-primary text-white text-[10px] font-black uppercase tracking-widest shadow-lg shadow-primary/20 hover:scale-105 active:scale-95 transition-all"
             >
-              {isSaving ? 'Saving...' : 'Push Updates'}
+              {isSaving ? 'Saving...' : 'Push Updates/Save Changes'}
             </button>
           </div>
         </div>
