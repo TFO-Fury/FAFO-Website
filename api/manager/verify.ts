@@ -43,7 +43,7 @@ const SPEC_TO_CLASS: Record<string, string> = {
 // widely-distributed desktop client rather than a single admin session.
 const requestLog = new Map<string, number[]>();
 const RATE_LIMIT_WINDOW_MS = 60000;
-const RATE_LIMIT_MAX_REQUESTS = 10;
+const RATE_LIMIT_MAX_REQUESTS = 40;
 
 function isRateLimited(id: string): boolean {
   const now = Date.now();
