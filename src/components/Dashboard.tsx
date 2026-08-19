@@ -75,9 +75,12 @@ export function Dashboard({ onUpgrade, targetUserId }: DashboardProps) {
         setAdminDiscordId(data.discordId || '');
         setAdminPlan(data.plan || 'none');
         setAdminStatus(data.accountStatus || 'inactive');
-        if (data.expiresAt && typeof data.expiresAt.toDate === 'function') {
-          const date = data.expiresAt.toDate();
+        const expiresSource = data.aioExpires || data.expiresAt;
+        if (expiresSource && typeof expiresSource.toDate === 'function') {
+          const date = expiresSource.toDate();
           setAdminExpiresAt(date.toISOString().split('T')[0]);
+        } else {
+          setAdminExpiresAt('');
         }
       }
       setLoading(false);
@@ -179,7 +182,11 @@ export function Dashboard({ onUpgrade, targetUserId }: DashboardProps) {
       };
 
       if (adminExpiresAt) {
-        updates.expiresAt = new Date(adminExpiresAt);
+        // api/admin/user/update.ts expects aioExpires as a plain YYYY-MM-DD
+        // string (it does the Timestamp conversion server-side) - a raw JS
+        // Date here would just serialize to a string over JSON and get
+        // stored as a plain string field instead of a Firestore Timestamp.
+        updates.aioExpires = adminExpiresAt;
       }
 
       const res = await fetch('/api/admin/user/update', {
@@ -649,8 +656,14 @@ export function Dashboard({ onUpgrade, targetUserId }: DashboardProps) {
             <div className="pt-6 border-t border-white/5 space-y-4">
               {isAdminViewing ? (
                 <div className="space-y-2">
+                  {userData?.discordUsername && (
+                    <div className="flex items-center gap-2 text-xs font-bold text-white/50 mb-1">
+                      <span className="text-white/20 uppercase tracking-widest text-[10px]">Linked:</span>
+                      <span className="text-[#5865F2]">@{userData.discordUsername}</span>
+                    </div>
+                  )}
                   <label className="text-[10px] font-black text-white/20 uppercase tracking-widest">Manual Discord ID</label>
-                  <input 
+                  <input
                     type="text"
                     value={adminDiscordId}
                     onChange={(e) => setAdminDiscordId(e.target.value)}
