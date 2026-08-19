@@ -487,10 +487,14 @@ export function Dashboard({ onUpgrade, targetUserId }: DashboardProps) {
               <>
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-black text-white/20 uppercase tracking-widest">Subscription Tier</label>
-                  <select 
+                  <select
                     value={adminPlan}
                     onChange={(e) => setAdminPlan(e.target.value)}
-                    className="w-full h-11 bg-background border border-white/10 rounded-xl px-4 text-[10px] font-black uppercase tracking-widest text-white/60 outline-none focus:ring-2 focus:ring-primary/20"
+                    className={`w-full h-11 rounded-xl px-4 text-[10px] font-black uppercase tracking-widest outline-none focus:ring-2 focus:ring-primary/20 border transition-colors ${
+                      adminPlan && adminPlan !== 'none'
+                        ? 'bg-primary/10 text-primary border-primary/20'
+                        : 'bg-white/5 text-white/40 border-white/5'
+                    }`}
                   >
                     <option value="none">None</option>
                     <option value="trial">Trial</option>
@@ -500,23 +504,28 @@ export function Dashboard({ onUpgrade, targetUserId }: DashboardProps) {
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-black text-white/20 uppercase tracking-widest">Account Status</label>
-                  <select 
-                    value={adminStatus}
-                    onChange={(e) => setAdminStatus(e.target.value)}
-                    className="w-full h-11 bg-background border border-white/10 rounded-xl px-4 text-[10px] font-black uppercase tracking-widest text-white/60 outline-none focus:ring-2 focus:ring-primary/20"
-                  >
-                    <option value="active">Active</option>
-                    <option value="inactive">Inactive</option>
-                    <option value="expired">Expired</option>
-                  </select>
+                  <div className="relative">
+                    <span className={`absolute left-4 top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full pointer-events-none ${adminStatus === 'active' ? 'bg-green-500' : 'bg-red-500'}`} />
+                    <select
+                      value={adminStatus}
+                      onChange={(e) => setAdminStatus(e.target.value)}
+                      className={`w-full h-11 bg-background border border-white/10 rounded-xl pl-8 pr-4 text-[10px] font-black uppercase tracking-widest outline-none focus:ring-2 focus:ring-primary/20 transition-colors ${
+                        adminStatus === 'active' ? 'text-green-500' : 'text-red-500'
+                      }`}
+                    >
+                      <option value="active">Active</option>
+                      <option value="inactive">Inactive</option>
+                      <option value="expired">Expired</option>
+                    </select>
+                  </div>
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-black text-white/20 uppercase tracking-widest">Expiration Date</label>
-                  <input 
+                  <input
                     type="date"
                     value={adminExpiresAt}
                     onChange={(e) => setAdminExpiresAt(e.target.value)}
-                    className="w-full h-11 bg-background border border-white/10 rounded-xl px-4 text-[10px] font-black uppercase tracking-widest text-white/60 outline-none focus:ring-2 focus:ring-primary/20 transition-all font-mono"
+                    className="w-full h-11 bg-white/5 border border-white/10 rounded-xl px-4 text-[10px] font-black uppercase tracking-widest text-white/60 outline-none focus:ring-2 focus:ring-primary/20 transition-all font-mono"
                   />
                 </div>
               </>
