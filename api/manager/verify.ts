@@ -15,6 +15,7 @@ import { normalizeEntitlements, isAioActive, getActiveClasses, timestampToDate }
 const SPEC_TO_CLASS: Record<string, string> = {
   'Hunter-BeastMastery': 'hunter',
   'Hunter-Survival': 'hunter',
+  'Hunter-Marksmanship': 'hunter',
   'DeathKnight-Unholy': 'deathknight',
   'DeathKnight-Frost': 'deathknight',
   'Monk-Mistweaver': 'monk',
