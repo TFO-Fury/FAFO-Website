@@ -281,9 +281,11 @@ export function AdminPanel({ onViewUser }: AdminPanelProps) {
   try {
     filteredUsers = users.filter(user => {
       if (!user) return false;
-      const matchesSearch = (user.email || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-                           (user.discordId || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-                           (user.discordUsername || '').toLowerCase().includes(searchTerm.toLowerCase());
+      const term = searchTerm.toLowerCase();
+      const matchesSearch = (user.email || '').toLowerCase().includes(term) ||
+                           (user.discordId || '').toLowerCase().includes(term) ||
+                           (user.discordUsername || '').toLowerCase().includes(term) ||
+                           allKeys.some(k => k.userId === user.id && (k.id || k.key || '').toLowerCase().includes(term));
       const matchesPlan = filterPlan === 'all' || user.plan === filterPlan;
       const matchesStatus = filterStatus === 'all' || user.accountStatus === filterStatus;
       return matchesSearch && matchesPlan && matchesStatus;
@@ -350,7 +352,7 @@ export function AdminPanel({ onViewUser }: AdminPanelProps) {
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/20" />
                   <input
                     type="text"
-                    placeholder="Search email or Discord ID..."
+                    placeholder="Search email, Discord name, Discord ID, or key..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                     className="h-10 pl-10 pr-4 rounded-lg bg-white/[0.02] border border-white/[0.04] text-sm font-medium focus:ring-2 focus:ring-primary/20 focus:border-primary/20 outline-none transition-all w-full sm:w-72"
