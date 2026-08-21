@@ -18,6 +18,7 @@ const SPEC_TO_CLASS: Record<string, string> = {
   'Hunter-Marksmanship': 'hunter',
   'DeathKnight-Unholy': 'deathknight',
   'DeathKnight-Frost': 'deathknight',
+  'DeathKnight-Blood': 'deathknight',
   'Monk-Mistweaver': 'monk',
   'Monk-Windwalker': 'monk',
   'Paladin-Holy': 'paladin',
