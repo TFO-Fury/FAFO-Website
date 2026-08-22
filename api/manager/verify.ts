@@ -38,6 +38,7 @@ const SPEC_TO_CLASS: Record<string, string> = {
   'Druid-Restoration': 'druid',
   'Druid-Feral': 'druid',
   'Druid-Balance': 'druid',
+  'Mage-Fire': 'mage',
 };
 
 // Simple in-memory rate limiter (per-function-instance, best-effort for serverless) — same shape
