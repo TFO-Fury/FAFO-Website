@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { getSaleDetails } from '../_lib/paypal.js';
 
-const SALE_ID = '6GJ95762UY252253F';
+const SALE_ID = '5NK32343C1677801C';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.headers['x-cron-secret'] !== process.env.CRON_SECRET) {
