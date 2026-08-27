@@ -95,6 +95,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     const firestore = await getDb();
 
+    // Admin kill switch (Specs tab in AdminPanel) - lets a spec be pulled for
+    // everyone instantly while a bug in it is being fixed, without needing a
+    // per-customer explanation. Checked before the real entitlement check so
+    // it applies regardless of what a given key is otherwise entitled to.
+    const specsConfigSnap = await firestore.collection('config').doc('managerSpecs').get();
+    if (specsConfigSnap.exists && specsConfigSnap.data()?.disabled?.[spec]) {
+      return res.status(200).json({ valid: false, underConstruction: true });
+    }
+
     const keySnap = await firestore.collection('cd_keys').doc(key).get();
     if (!keySnap.exists) {
       return res.status(200).json({ valid: false });

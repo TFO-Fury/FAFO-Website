@@ -1,6 +1,6 @@
 import { useState, useEffect, ReactNode } from 'react';
 import { db, auth, handleFirestoreError, OperationType } from '../lib/firebase';
-import { collection, onSnapshot, doc, updateDoc, deleteDoc, query, orderBy, limit } from 'firebase/firestore';
+import { collection, onSnapshot, doc, setDoc, updateDoc, deleteDoc, query, orderBy, limit } from 'firebase/firestore';
 import {
   Search,
   Edit3,
@@ -22,7 +22,8 @@ import {
   TrendingUp,
   Hexagon,
   DollarSign,
-  Github
+  Github,
+  Wrench
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import AnalyticsDashboard from './AnalyticsDashboard';
@@ -38,8 +39,27 @@ const TABS = [
   { id: 'revenue', label: 'Revenue', icon: <BarChart3 className="w-3.5 h-3.5" /> },
   { id: 'analytics', label: 'Analytics', icon: <TrendingUp className="w-3.5 h-3.5" /> },
   { id: 'subscriptions', label: 'Subscriptions', icon: <Zap className="w-3.5 h-3.5" /> },
-  { id: 'cdkeys', label: 'CD Keys', icon: <Ticket className="w-3.5 h-3.5" /> }
+  { id: 'cdkeys', label: 'CD Keys', icon: <Ticket className="w-3.5 h-3.5" /> },
+  { id: 'specs', label: 'Specs', icon: <Wrench className="w-3.5 h-3.5" /> }
 ];
+
+// Mirrors the manager's rotations/ folder (rotation-file-per-spec = what
+// actually shows up in the Spec/rotation dropdown), grouped by class for
+// display. Keep in sync with rotations/*.json in the FAFO-Rotations repo.
+const MANAGER_SPECS: Record<string, string[]> = {
+  DeathKnight: ['DeathKnight-Blood', 'DeathKnight-Frost', 'DeathKnight-Unholy'],
+  DemonHunter: ['DemonHunter-Havoc'],
+  Druid: ['Druid-Balance', 'Druid-Feral', 'Druid-Guardian', 'Druid-Restoration'],
+  Evoker: ['Evoker-Devastation', 'Evoker-Preservation'],
+  Hunter: ['Hunter-BeastMastery', 'Hunter-Marksmanship', 'Hunter-Survival'],
+  Mage: ['Mage-Fire'],
+  Monk: ['Monk-Mistweaver', 'Monk-Windwalker'],
+  Paladin: ['Paladin-Holy', 'Paladin-Retribution'],
+  Priest: ['Priest-Discipline', 'Priest-Holy'],
+  Shaman: ['Shaman-Elemental', 'Shaman-Enhancement'],
+  Warlock: ['Warlock-Affliction', 'Warlock-Destruction'],
+  Warrior: ['Warrior-Arms', 'Warrior-Fury']
+};
 
 function formatClassName(val: any): string {
   if (!val) return 'Unknown Class';
@@ -78,6 +98,8 @@ export function AdminPanel({ onViewUser }: AdminPanelProps) {
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
   const [actionLoading, setActionLoading] = useState(false);
   const [modalError, setModalError] = useState<string | null>(null);
+  const [disabledSpecs, setDisabledSpecs] = useState<Record<string, boolean>>({});
+  const [specToggleLoading, setSpecToggleLoading] = useState<string | null>(null);
 
   useEffect(() => {
     // Listen to users
@@ -104,6 +126,29 @@ export function AdminPanel({ onViewUser }: AdminPanelProps) {
     });
     return () => unsubKeys();
   }, []);
+
+  useEffect(() => {
+    const unsubSpecs = onSnapshot(doc(db, 'config', 'managerSpecs'), (snap) => {
+      setDisabledSpecs(snap.exists() ? (snap.data()?.disabled || {}) : {});
+    }, (err) => {
+      console.error('[Admin] Specs config fetch error:', err);
+    });
+    return () => unsubSpecs();
+  }, []);
+
+  const handleToggleSpec = async (specId: string) => {
+    setSpecToggleLoading(specId);
+    try {
+      await setDoc(doc(db, 'config', 'managerSpecs'), {
+        disabled: { ...disabledSpecs, [specId]: !disabledSpecs[specId] }
+      }, { merge: true });
+    } catch (err: any) {
+      console.error('[AdminPanel] handleToggleSpec failed:', err);
+      alert(`Failed to toggle spec: ${err.message}`);
+    } finally {
+      setSpecToggleLoading(null);
+    }
+  };
 
   const handleUpdateUser = async (userId: string) => {
     try {
@@ -335,12 +380,56 @@ export function AdminPanel({ onViewUser }: AdminPanelProps) {
           <StatCard icon={<Zap className="w-3.5 h-3.5" />} label="Active Subs" value={users.filter(u => u.accountStatus === 'active').length} accent="text-orange-500" />
         </div>
 
-        {activeTab !== 'users' && activeTab !== 'cdkeys' && (
+        {activeTab !== 'users' && activeTab !== 'cdkeys' && activeTab !== 'specs' && (
           <AnalyticsDashboard onSelectUser={(email) => { setSearchTerm(email); setActiveTab('users'); }} />
         )}
 
         {activeTab === 'cdkeys' && (
           <CDKeyManager userId={auth.currentUser?.uid || ''} keys={allKeys} isAdmin={true} />
+        )}
+
+        {activeTab === 'specs' && (
+          <div className="space-y-6">
+            <div className="p-4 rounded-xl bg-yellow-500/5 border border-yellow-500/20 text-yellow-500/80 text-xs font-bold">
+              Toggling a spec off blocks it for every customer immediately — the FAFO Manager will show
+              "This spec is under construction" instead of the usual license check. Use this while fixing a bug in a spec instead of it just erroring for everyone.
+            </div>
+            {Object.entries(MANAGER_SPECS).map(([className, specs]) => (
+              <div key={className} className="bg-white/[0.02] border border-white/[0.04] rounded-2xl p-5 space-y-3">
+                <h3 className="text-xs font-black uppercase tracking-widest text-white/40">{className}</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                  {specs.map(specId => {
+                    const isDisabled = !!disabledSpecs[specId];
+                    const isLoading = specToggleLoading === specId;
+                    return (
+                      <button
+                        key={specId}
+                        onClick={() => handleToggleSpec(specId)}
+                        disabled={isLoading}
+                        className={`flex items-center justify-between gap-3 px-4 py-3 rounded-xl border text-left transition-all ${
+                          isDisabled
+                            ? 'bg-yellow-500/10 border-yellow-500/20'
+                            : 'bg-white/[0.02] border-white/[0.05] hover:border-white/10'
+                        } ${isLoading ? 'opacity-50' : ''}`}
+                      >
+                        <span className="min-w-0">
+                          <span className={`block text-xs font-bold truncate ${isDisabled ? 'text-yellow-500' : 'text-white/70'}`}>
+                            {specId.split('-')[1]}
+                          </span>
+                          <span className={`block text-[9px] font-black uppercase tracking-widest ${isDisabled ? 'text-yellow-500/60' : 'text-white/20'}`}>
+                            {isDisabled ? 'Under Construction' : 'Live'}
+                          </span>
+                        </span>
+                        <span className={`relative flex-shrink-0 w-9 h-5 rounded-full transition-colors ${isDisabled ? 'bg-yellow-500/40' : 'bg-white/10'}`}>
+                          <span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-transform ${isDisabled ? 'translate-x-4' : ''}`} />
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
         )}
 
         {activeTab === 'users' && (

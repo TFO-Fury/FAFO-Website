@@ -111,6 +111,12 @@ service cloud.firestore {
       allow create: if isSignedIn() && (request.resource.data.userId == request.auth.uid || request.resource.data.uid == request.auth.uid);
     }
 
+    match /config/{configId} {
+      allow get: if isAdmin();
+      allow list: if isAdmin();
+      allow write: if isAdmin();
+    }
+
     // Connectivity Check Collection
     match /test/{docId} {
       allow read: if true;
