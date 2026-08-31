@@ -35,10 +35,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   console.log(`[PayPalWebhook] Received ${eventType} for order ${orderId}`);
 
-  // Acknowledge immediately
-  res.status(200).json({ received: true });
-
-  // Process async
+  // The response is sent only AFTER processing fully completes (see catch
+  // block below) - NOT acknowledged upfront. Sending 200 before finishing the
+  // awaited Firestore work below let Vercel freeze/kill this function's
+  // execution context right after the response flushed, before those awaits
+  // ever ran - the logs for every real incident this caused (Pedro, George,
+  // Sebastian) show the handler getting exactly as far as "connecting to
+  // Firestore" and then just stopping, no further log line, no error. It
+  // also meant PayPal always saw success even when processing crashed, so
+  // its own automatic webhook retry never had a chance to recover a
+  // transient failure - a real payment could vanish with nothing to catch it.
   try {
     const firestore = await getDb();
 
@@ -197,6 +203,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         console.log(`[PayPalWebhook] Auto-captured order ${orderId}`);
       } catch (capErr: any) {
         console.error(`[PayPalWebhook] Auto-capture failed for ${orderId}:`, capErr);
+        // Likely transient (a PayPal API call failing) - a 500 lets PayPal's own webhook retry recover it.
+        res.status(500).json({ error: 'Auto-capture failed' });
         return;
       }
     }
@@ -291,5 +299,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
   } catch (err: any) {
     console.error('[PayPalWebhook] Processing error:', err);
+    // 500, not 200: this is very likely transient (Firestore, PayPal API) -
+    // PayPal will retry the webhook delivery on a non-2xx response, giving a
+    // real second chance to recover instead of the payment silently going
+    // unrecorded forever with no automatic retry at all.
+    if (!res.headersSent) {
+      res.status(500).json({ error: err.message || 'Processing error' });
+    }
+    return;
+  }
+
+  if (!res.headersSent) {
+    res.status(200).json({ received: true });
   }
 }
