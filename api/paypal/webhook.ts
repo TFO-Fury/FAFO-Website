@@ -103,6 +103,31 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return;
       }
 
+      // PayPal sends PAYMENT.SALE.COMPLETED for a subscription's very FIRST
+      // payment too, not just true renewals - confirm-subscription.ts (the
+      // client-driven path) already grants that first payment's 30 days on
+      // its own, with its own order record (transactionId: null, so the
+      // saleId check above never catches it). Before this webhook could
+      // actually complete (see the response-timing fix above), that race
+      // never mattered - the webhook always died first. Now that it
+      // completes, both paths were granting the same first payment,
+      // double-stacking new subscribers to ~60 days with two order records
+      // each. A true renewal is ~30 days after the last order for this
+      // subscription, so anything within the last hour is unambiguously the
+      // same initial-payment race, never a real second cycle.
+      const recentForSubQuery = await firestore.collection('orders')
+        .where('subscriptionId', '==', subscriptionId)
+        .get();
+      const oneHourAgo = Date.now() - 60 * 60 * 1000;
+      const hasRecentOrder = recentForSubQuery.docs.some(d => {
+        const createdAt = d.data().createdAt?.toDate?.();
+        return createdAt && createdAt.getTime() > oneHourAgo;
+      });
+      if (hasRecentOrder) {
+        console.log(`[PayPalWebhook] Subscription ${subscriptionId} already has a recent order (initial-payment race with confirm-subscription) - skipping renewal grant for sale ${saleId}`);
+        return;
+      }
+
       const days = 30;
       const aioExpirationDate = calculateStackedExpiration(userData?.aioExpires, days);
       const aioExpirationTimestamp = Timestamp.fromDate(aioExpirationDate);
