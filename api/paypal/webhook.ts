@@ -56,6 +56,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const subscriptionId = resource.billing_agreement_id;
       const saleId = resource.id;
 
+      // Permanent, append-only dedup ledger for this exact PayPal event -
+      // deliberately separate from the customer-facing `orders` collection,
+      // which admins legitimately need to edit/delete when correcting a
+      // mistake (as happened here). Deleting an `orders` doc used to also
+      // delete the only record protecting against PayPal redelivering the
+      // SAME event later (a normal, expected "at least once" webhook
+      // behavior, observed here arriving ~12 hours after the original) -
+      // that let it get double-processed for real. This ledger is never
+      // touched by any cleanup/reconciliation script, so it can't happen again.
+      const processedRef = firestore.collection('paypal_processed_sales').doc(saleId);
+      const processedSnap = await processedRef.get();
+      if (processedSnap.exists) {
+        console.log(`[PayPalWebhook] Sale ${saleId} already processed per permanent ledger, skipping`);
+        return;
+      }
+
       let userDoc = (await firestore.collection('users')
         .where('subscriptionId', '==', subscriptionId)
         .limit(1)
@@ -100,6 +116,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         .get();
       if (!dupQuery.empty) {
         console.log(`[PayPalWebhook] Deduplication: sale ${saleId} already processed, skipping`);
+        await processedRef.set({ processedAt: FieldValue.serverTimestamp(), subscriptionId, userId: userRef.id, outcome: 'skipped-existing-order' });
         return;
       }
 
@@ -113,18 +130,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // completes, both paths were granting the same first payment,
       // double-stacking new subscribers to ~60 days with two order records
       // each. A true renewal is ~30 days after the last order for this
-      // subscription, so anything within the last hour is unambiguously the
-      // same initial-payment race, never a real second cycle.
+      // subscription, so a full day's margin is unambiguously the same
+      // initial-payment race (PayPal's own redelivery of this exact event
+      // has been observed arriving up to ~12 hours later), never a real
+      // second cycle.
       const recentForSubQuery = await firestore.collection('orders')
         .where('subscriptionId', '==', subscriptionId)
         .get();
-      const oneHourAgo = Date.now() - 60 * 60 * 1000;
+      const oneDayAgo = Date.now() - 24 * 60 * 60 * 1000;
       const hasRecentOrder = recentForSubQuery.docs.some(d => {
         const createdAt = d.data().createdAt?.toDate?.();
-        return createdAt && createdAt.getTime() > oneHourAgo;
+        return createdAt && createdAt.getTime() > oneDayAgo;
       });
       if (hasRecentOrder) {
         console.log(`[PayPalWebhook] Subscription ${subscriptionId} already has a recent order (initial-payment race with confirm-subscription) - skipping renewal grant for sale ${saleId}`);
+        await processedRef.set({ processedAt: FieldValue.serverTimestamp(), subscriptionId, userId: userRef.id, outcome: 'skipped-recent-order' });
         return;
       }
 
@@ -164,6 +184,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       syncDiscord(userRef.id, 'aio').catch((err: any) => console.error('[Discord Sync Error]', err));
       triggerLicenseSync(userRef.id, 'paypal-subscription-renewal').catch((err: any) => console.error('[LicenseSync] Renewal sync failed:', err));
+
+      await processedRef.set({ processedAt: FieldValue.serverTimestamp(), subscriptionId, userId: userRef.id, outcome: 'granted' });
 
       console.log(`[PayPalWebhook] Subscription ${subscriptionId} renewed for ${userRef.id}, expires=${aioExpirationDate.toISOString()}`);
       return;
