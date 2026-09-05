@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { readJsonBody } from '../_lib/body.js';
-import { getDb } from '../_lib/firebase-admin.js';
+import { getDb, FieldValue } from '../_lib/firebase-admin.js';
 import { normalizeEntitlements, isAioActive, getActiveClasses, timestampToDate } from '../_lib/entitlements.js';
 
 // FAFO Manager reader "call home" check — the reader is a local, unsandboxed Python process
@@ -117,6 +117,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!userDoc.exists) {
       return res.status(200).json({ valid: false });
     }
+
+    // A real key resolving to a real account is a genuine "call home" from
+    // that customer's manager install, regardless of what the spec check
+    // below decides - record it so the admin panel can show last-seen
+    // instead of the rarely-useful Role column. Fire-and-forget: this must
+    // never slow down or fail the actual license response.
+    userDoc.ref.set({ lastManagerPingAt: FieldValue.serverTimestamp() }, { merge: true })
+      .catch(err => console.error('[ManagerVerify] Failed to record lastManagerPingAt:', err));
 
     const normalized = normalizeEntitlements(userDoc.data());
 

@@ -61,6 +61,19 @@ const MANAGER_SPECS: Record<string, string[]> = {
   Warrior: ['Warrior-Arms', 'Warrior-Fury']
 };
 
+function formatLastPing(ts: any): { text: string; color: string } {
+  const d = ts?.toDate ? ts.toDate() : (ts instanceof Date ? ts : null);
+  if (!d || isNaN(d.getTime())) return { text: 'Never', color: 'text-white/20' };
+  const ms = Date.now() - d.getTime();
+  const mins = ms / 60000;
+  if (mins < 60) return { text: `${Math.max(1, Math.round(mins))}m ago`, color: 'text-green-500' };
+  const hours = mins / 60;
+  if (hours < 24) return { text: `${Math.round(hours)}h ago`, color: 'text-green-500' };
+  const days = hours / 24;
+  if (days < 7) return { text: `${Math.round(days)}d ago`, color: 'text-white/50' };
+  return { text: d.toLocaleDateString(), color: 'text-white/30' };
+}
+
 function formatClassName(val: any): string {
   if (!val) return 'Unknown Class';
   if (typeof val !== 'string') return String(val);
@@ -481,7 +494,7 @@ export function AdminPanel({ onViewUser }: AdminPanelProps) {
                   <tr className="border-b border-white/[0.04] bg-white/[0.02]">
                     <th className="px-5 py-4 text-[10px] font-black uppercase tracking-widest text-white/20 w-[300px]">User</th>
                     <th className="px-5 py-4 text-[10px] font-black uppercase tracking-widest text-white/20 w-[120px]">Plan</th>
-                    <th className="px-5 py-4 text-[10px] font-black uppercase tracking-widest text-white/20 w-[80px]">Role</th>
+                    <th className="px-5 py-4 text-[10px] font-black uppercase tracking-widest text-white/20 w-[100px]">Last Ping</th>
                     <th className="px-5 py-4 text-[10px] font-black uppercase tracking-widest text-white/20 w-[100px]">Status</th>
                     <th className="px-5 py-4 text-[10px] font-black uppercase tracking-widest text-white/20 w-[160px]">Expires</th>
                     <th className="px-5 py-4 text-[10px] font-black uppercase tracking-widest text-white/20 w-[160px]">Discord</th>
@@ -659,11 +672,13 @@ export function AdminPanel({ onViewUser }: AdminPanelProps) {
                                   )}
                                 </td>
 
-                                {/* Role Column */}
-                                <td className="px-5 py-3 w-[80px]">
-                                  <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-widest border ${user?.role === 'admin' ? 'bg-primary/10 text-primary border-primary/20' : user?.role === 'owner' ? 'bg-orange-500/10 text-orange-500 border-orange-500/20' : user?.role === 'trial' ? 'bg-purple-500/10 text-purple-500 border-purple-500/20' : 'bg-white/5 text-white/40 border-white/5'}`}>
-                                    {user?.role || 'user'}
-                                  </span>
+                                {/* Last Ping Column - most recent time the FAFO Manager called
+                                    home with this account's key (api/manager/verify.ts) */}
+                                <td className="px-5 py-3 w-[100px]">
+                                  {(() => {
+                                    const { text, color } = formatLastPing(user?.lastManagerPingAt);
+                                    return <span className={`text-[10px] font-bold tabular-nums ${color}`}>{text}</span>;
+                                  })()}
                                 </td>
 
                                 {/* Status Column */}
