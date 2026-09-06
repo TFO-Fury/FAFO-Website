@@ -113,6 +113,7 @@ export function AdminPanel({ onViewUser }: AdminPanelProps) {
   const [modalError, setModalError] = useState<string | null>(null);
   const [disabledSpecs, setDisabledSpecs] = useState<Record<string, boolean>>({});
   const [specToggleLoading, setSpecToggleLoading] = useState<string | null>(null);
+  const [bulkGrantLoading, setBulkGrantLoading] = useState(false);
 
   useEffect(() => {
     // Listen to users
@@ -202,6 +203,38 @@ export function AdminPanel({ onViewUser }: AdminPanelProps) {
       // below actually runs instead of failing completely silently.
       try { handleFirestoreError(err, OperationType.UPDATE, `users/${userId}`); } catch { /* logged already */ }
       alert(`Failed to update user: ${err.message}`);
+    }
+  };
+
+  const handleBulkGrantInactive = async () => {
+    const count = users.filter(u => u.accountStatus !== 'active').length;
+    if (count === 0) {
+      alert('No inactive users to grant.');
+      return;
+    }
+    if (!window.confirm(`Give ${count} inactive users 48 hours of AIO access? This affects every currently inactive account.`)) {
+      return;
+    }
+    setBulkGrantLoading(true);
+    try {
+      const currentUser = auth.currentUser;
+      if (!currentUser) throw new Error('Not authenticated');
+      const token = await currentUser.getIdToken(true);
+
+      const res = await fetch('/api/admin/bulk-grant-inactive', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+
+      alert(`Granted 48h AIO to ${data.granted}/${data.totalInactive} inactive users.${data.failed?.length ? ` ${data.failed.length} failed - check console.` : ''}`);
+      if (data.failed?.length) console.error('[AdminPanel] Bulk grant failures:', data.failed);
+    } catch (err: any) {
+      console.error('[AdminPanel] handleBulkGrantInactive failed:', err);
+      alert(`Failed to bulk grant: ${err.message}`);
+    } finally {
+      setBulkGrantLoading(false);
     }
   };
 
@@ -391,6 +424,16 @@ export function AdminPanel({ onViewUser }: AdminPanelProps) {
           <StatCard icon={<Ban className="w-3.5 h-3.5" />} label="Inactive" value={users.filter(u => u.accountStatus !== 'active').length} accent="text-red-500" />
           <StatCard icon={<DollarSign className="w-3.5 h-3.5" />} label="Revenue" value="—" accent="text-white/40" />
           <StatCard icon={<Zap className="w-3.5 h-3.5" />} label="Active Subs" value={users.filter(u => u.accountStatus === 'active').length} accent="text-orange-500" />
+        </div>
+
+        <div className="flex justify-end mb-8 -mt-4">
+          <button
+            onClick={handleBulkGrantInactive}
+            disabled={bulkGrantLoading}
+            className="px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest bg-primary/10 text-primary border border-primary/20 hover:bg-primary hover:text-white transition-all disabled:opacity-50"
+          >
+            {bulkGrantLoading ? 'Granting...' : `Give ${users.filter(u => u.accountStatus !== 'active').length} Inactive Users 48h AIO`}
+          </button>
         </div>
 
         {activeTab !== 'users' && activeTab !== 'cdkeys' && activeTab !== 'specs' && (
