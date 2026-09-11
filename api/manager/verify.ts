@@ -123,7 +123,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // below decides - record it so the admin panel can show last-seen
     // instead of the rarely-useful Role column. Fire-and-forget: this must
     // never slow down or fail the actual license response.
-    userDoc.ref.set({ lastManagerPingAt: FieldValue.serverTimestamp() }, { merge: true })
+    userDoc.ref.set({ lastManagerPingAt: FieldValue.serverTimestamp(), lastManagerPingSpec: spec }, { merge: true })
       .catch(err => console.error('[ManagerVerify] Failed to record lastManagerPingAt:', err));
 
     const normalized = normalizeEntitlements(userDoc.data());

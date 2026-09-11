@@ -537,7 +537,7 @@ export function AdminPanel({ onViewUser }: AdminPanelProps) {
                   <tr className="border-b border-white/[0.04] bg-white/[0.02]">
                     <th className="px-5 py-4 text-[10px] font-black uppercase tracking-widest text-white/20 w-[300px]">User</th>
                     <th className="px-5 py-4 text-[10px] font-black uppercase tracking-widest text-white/20 w-[120px]">Plan</th>
-                    <th className="px-5 py-4 text-[10px] font-black uppercase tracking-widest text-white/20 w-[100px]">Last Ping</th>
+                    <th className="px-5 py-4 text-[10px] font-black uppercase tracking-widest text-white/20 w-[130px]">Last Ping</th>
                     <th className="px-5 py-4 text-[10px] font-black uppercase tracking-widest text-white/20 w-[100px]">Status</th>
                     <th className="px-5 py-4 text-[10px] font-black uppercase tracking-widest text-white/20 w-[160px]">Expires</th>
                     <th className="px-5 py-4 text-[10px] font-black uppercase tracking-widest text-white/20 w-[160px]">Discord</th>
@@ -716,11 +716,19 @@ export function AdminPanel({ onViewUser }: AdminPanelProps) {
                                 </td>
 
                                 {/* Last Ping Column - most recent time the FAFO Manager called
-                                    home with this account's key (api/manager/verify.ts) */}
-                                <td className="px-5 py-3 w-[100px]">
+                                    home with this account's key, and which spec it was running
+                                    (api/manager/verify.ts) */}
+                                <td className="px-5 py-3 w-[130px]">
                                   {(() => {
                                     const { text, color } = formatLastPing(user?.lastManagerPingAt);
-                                    return <span className={`text-[10px] font-bold tabular-nums ${color}`}>{text}</span>;
+                                    return (
+                                      <div className="flex flex-col gap-0.5">
+                                        <span className={`text-[10px] font-bold tabular-nums ${color}`}>{text}</span>
+                                        {user?.lastManagerPingSpec && (
+                                          <span className="text-[9px] font-bold text-white/20 truncate">{user.lastManagerPingSpec}</span>
+                                        )}
+                                      </div>
+                                    );
                                   })()}
                                 </td>
 
