@@ -57,7 +57,7 @@ const MANAGER_SPECS: Record<string, string[]> = {
   Paladin: ['Paladin-Holy', 'Paladin-Retribution'],
   Priest: ['Priest-Discipline', 'Priest-Holy'],
   Shaman: ['Shaman-Elemental', 'Shaman-Enhancement'],
-  Warlock: ['Warlock-Affliction', 'Warlock-Destruction'],
+  Warlock: ['Warlock-Affliction', 'Warlock-Demonology', 'Warlock-Destruction'],
   Warrior: ['Warrior-Arms', 'Warrior-Fury']
 };
 
