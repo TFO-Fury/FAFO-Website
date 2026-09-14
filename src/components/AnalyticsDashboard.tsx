@@ -15,9 +15,12 @@ interface RevenueData {
     paidTransactions: number;
     projectedGrossRevenue: number;
     projectedTransactions: number;
+    expenses: { github: number; vercel: number; hostinger: number; paypalFees: number; total: number };
+    projectedNetProfit: number;
     owner1Payout: number;
     owner2Payout: number;
-    earned: { owner1Payout: number; owner2Payout: number };
+    fafoRetained: number;
+    earned: { paypalFees: number; expenses: number; netProfit: number; owner1Payout: number; owner2Payout: number; fafoRetained: number };
   } | null;
   activeSubscribers: number;
   aioSubscribers: number;
@@ -164,6 +167,7 @@ export default function AnalyticsDashboard({ onSelectUser }: AnalyticsDashboardP
               headlineValue={fmt(data.projectedPayout.revenue)}
               owner1={data.projectedPayout.earned.owner1Payout}
               owner2={data.projectedPayout.earned.owner2Payout}
+              fafo={data.projectedPayout.earned.fafoRetained}
             />
             <PayoutColumn
               label="Projected Month End"
@@ -172,8 +176,17 @@ export default function AnalyticsDashboard({ onSelectUser }: AnalyticsDashboardP
               headlineValue={fmt(data.projectedPayout.projectedGrossRevenue)}
               owner1={data.projectedPayout.owner1Payout}
               owner2={data.projectedPayout.owner2Payout}
+              fafo={data.projectedPayout.fafoRetained}
               accent
             />
+          </div>
+
+          <div className="pt-4 border-t border-white/5 grid grid-cols-2 sm:grid-cols-5 gap-3">
+            <ExpenseLine label="PayPal Fees" value={fmt(data.projectedPayout.expenses.paypalFees)} />
+            <ExpenseLine label="GitHub" value={fmt(data.projectedPayout.expenses.github)} />
+            <ExpenseLine label="Vercel" value={fmt(data.projectedPayout.expenses.vercel)} />
+            <ExpenseLine label="Hostinger" value={fmt(data.projectedPayout.expenses.hostinger)} />
+            <ExpenseLine label="Total Projected Expenses" value={fmt(data.projectedPayout.expenses.total)} accent />
           </div>
 
           <p className="text-[10px] font-bold text-white/20">
@@ -276,9 +289,9 @@ export default function AnalyticsDashboard({ onSelectUser }: AnalyticsDashboardP
   );
 }
 
-function PayoutColumn({ label, sublabel, headlineLabel, headlineValue, owner1, owner2, accent }: {
+function PayoutColumn({ label, sublabel, headlineLabel, headlineValue, owner1, owner2, fafo, accent }: {
   label: string; sublabel: string; headlineLabel: string; headlineValue: string;
-  owner1: number; owner2: number; accent?: boolean;
+  owner1: number; owner2: number; fafo: number; accent?: boolean;
 }) {
   const fmt = (n: number) => `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   return (
@@ -291,7 +304,7 @@ function PayoutColumn({ label, sublabel, headlineLabel, headlineValue, owner1, o
         <div className="text-[10px] font-bold uppercase tracking-widest text-white/20 mt-2">{headlineLabel}</div>
         <div className={`text-xl font-black tabular-nums ${accent ? 'text-primary' : 'text-white/80'}`}>{headlineValue}</div>
       </div>
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-3 gap-2">
         <div>
           <div className="text-[9px] font-black uppercase tracking-widest text-white/20">Owner 1</div>
           <div className="text-sm font-black tabular-nums text-green-500">{fmt(owner1)}</div>
@@ -300,7 +313,20 @@ function PayoutColumn({ label, sublabel, headlineLabel, headlineValue, owner1, o
           <div className="text-[9px] font-black uppercase tracking-widest text-white/20">Owner 2</div>
           <div className="text-sm font-black tabular-nums text-green-500">{fmt(owner2)}</div>
         </div>
+        <div>
+          <div className="text-[9px] font-black uppercase tracking-widest text-white/20">FAFO Retained</div>
+          <div className="text-sm font-black tabular-nums text-white/60">{fmt(fafo)}</div>
+        </div>
       </div>
+    </div>
+  );
+}
+
+function ExpenseLine({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
+  return (
+    <div>
+      <div className="text-[9px] font-black uppercase tracking-widest text-white/20 truncate">{label}</div>
+      <div className={`text-xs font-bold tabular-nums ${accent ? 'text-primary' : 'text-white/60'}`}>{value}</div>
     </div>
   );
 }

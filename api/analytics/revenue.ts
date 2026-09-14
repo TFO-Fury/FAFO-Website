@@ -173,10 +173,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const earnedNetForSplit = Math.max(0, earnedNetProfit);
 
     const round2 = (n: number) => parseFloat(n.toFixed(2));
-    // Expenses, net profit, and FAFO's retained share are deliberately left
-    // out of the response - the owner-facing dashboard shows only what each
-    // owner is projected to receive, not the underlying cost/retention
-    // breakdown. Computed above for the payout math itself, just never sent.
     const projectedPayout = {
       daysElapsed,
       daysInMonth,
@@ -184,11 +180,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       paidTransactions: thisMonthPaidTransactions,
       projectedGrossRevenue: round2(projectedGrossRevenue),
       projectedTransactions,
+      expenses: {
+        github: FIXED_EXPENSES.github,
+        vercel: FIXED_EXPENSES.vercel,
+        hostinger: FIXED_EXPENSES.hostinger,
+        paypalFees: round2(projectedPayPalFees),
+        total: round2(projectedExpenses)
+      },
+      projectedNetProfit: round2(projectedNetProfit),
       owner1Payout: round2(projectedNetForSplit * 0.4),
       owner2Payout: round2(projectedNetForSplit * 0.4),
+      fafoRetained: round2(projectedNetForSplit * 0.2),
       earned: {
+        paypalFees: round2(earnedPayPalFees),
+        expenses: round2(earnedExpenses),
+        netProfit: round2(earnedNetProfit),
         owner1Payout: round2(earnedNetForSplit * 0.4),
-        owner2Payout: round2(earnedNetForSplit * 0.4)
+        owner2Payout: round2(earnedNetForSplit * 0.4),
+        fafoRetained: round2(earnedNetForSplit * 0.2)
       }
     };
 
