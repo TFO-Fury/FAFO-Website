@@ -25,10 +25,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     const firestore = await getDb();
+    // "This Month" sends days=0 as a sentinel for "since the 1st of the
+    // current calendar month" - `parseInt('0', 10) || 30` previously treated
+    // that 0 as falsy and silently fell back to the same 30-day window as
+    // the "30 Days" filter, making the two show identical numbers.
     const { days = '30' } = req.query as { days?: string };
-    const daysNum = parseInt(days, 10) || 30;
-    const cutoff = new Date();
-    cutoff.setDate(cutoff.getDate() - daysNum);
+    const daysNum = days === '0' ? 0 : (parseInt(days, 10) || 30);
+    const cutoff = daysNum === 0 ? startOfMonth(new Date()) : (() => {
+      const c = new Date();
+      c.setDate(c.getDate() - daysNum);
+      return c;
+    })();
 
     const snapshot = await firestore.collection('orders')
       .where('createdAt', '>=', cutoff)

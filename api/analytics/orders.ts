@@ -2,6 +2,13 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { getDb } from '../_lib/firebase-admin.js';
 import { requireAdmin } from '../_lib/auth.js';
 
+function startOfMonth(d: Date): Date {
+  const r = new Date(d);
+  r.setDate(1);
+  r.setHours(0, 0, 0, 0);
+  return r;
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'GET') {
     return res.status(405).json({ error: 'Method not allowed' });
@@ -12,10 +19,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     const firestore = await getDb();
+    // Same "This Month" sentinel handling as api/analytics/revenue.ts - see
+    // its comment for why days=0 needs to be checked before the || fallback.
     const { days = '30' } = req.query as { days?: string };
-    const daysNum = parseInt(days, 10) || 30;
-    const cutoff = new Date();
-    cutoff.setDate(cutoff.getDate() - daysNum);
+    const daysNum = days === '0' ? 0 : (parseInt(days, 10) || 30);
+    const cutoff = daysNum === 0 ? startOfMonth(new Date()) : (() => {
+      const c = new Date();
+      c.setDate(c.getDate() - daysNum);
+      return c;
+    })();
 
     const snapshot = await firestore.collection('orders')
       .where('createdAt', '>=', cutoff)
