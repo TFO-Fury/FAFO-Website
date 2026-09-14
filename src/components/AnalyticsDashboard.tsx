@@ -183,7 +183,7 @@ export default function AnalyticsDashboard({ onSelectUser }: AnalyticsDashboardP
 
           <div className="pt-4 border-t border-white/5 grid grid-cols-2 sm:grid-cols-5 gap-3">
             <ExpenseLine label="PayPal Fees" value={fmt(data.projectedPayout.expenses.paypalFees)} />
-            <ExpenseLine label="GitHub" value={fmt(data.projectedPayout.expenses.github)} />
+            <ExpenseLine label="GitHub" value={fmt(data.projectedPayout.expenses.github)} note="Can go up with more pushes" />
             <ExpenseLine label="Vercel" value={fmt(data.projectedPayout.expenses.vercel)} />
             <ExpenseLine label="Hostinger" value={fmt(data.projectedPayout.expenses.hostinger)} />
             <ExpenseLine label="Total Projected Expenses" value={fmt(data.projectedPayout.expenses.total)} accent />
@@ -322,11 +322,12 @@ function PayoutColumn({ label, sublabel, headlineLabel, headlineValue, owner1, o
   );
 }
 
-function ExpenseLine({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
+function ExpenseLine({ label, value, accent, note }: { label: string; value: string; accent?: boolean; note?: string }) {
   return (
     <div>
       <div className="text-[9px] font-black uppercase tracking-widest text-white/20 truncate">{label}</div>
       <div className={`text-xs font-bold tabular-nums ${accent ? 'text-primary' : 'text-white/60'}`}>{value}</div>
+      {note && <div className="text-[8px] font-bold text-white/20 leading-tight mt-0.5">{note}</div>}
     </div>
   );
 }
