@@ -16,18 +16,18 @@ interface RevenueData {
     projectedGrossRevenue: number;
     projectedTransactions: number;
     expenses: { github: number; vercel: number; hostinger: number; paypalFees: number; total: number };
-    projectedNetProfit: number;
+    projectedPayPalFees: number;
+    projectedNetAfterPayPal: number;
     payoutsUnlocked: boolean;
     owner1Payout: number;
     owner2Payout: number;
-    fafoOperatingBudgetFunded: number;
-    fafoAdditionalReserve: number;
-    fafoTotalRetained: number;
+    fafoAllocation: number;
+    fafoReserve: number;
     amountNeededToUnlock: number;
     earned: {
-      paypalFees: number; expenses: number; netProfit: number; payoutsUnlocked: boolean;
+      paypalFees: number; netAfterPayPal: number; payoutsUnlocked: boolean;
       owner1Payout: number; owner2Payout: number;
-      fafoOperatingBudgetFunded: number; fafoAdditionalReserve: number; fafoTotalRetained: number; amountNeededToUnlock: number;
+      fafoAllocation: number; fafoReserve: number; amountNeededToUnlock: number;
     };
   } | null;
   activeSubscribers: number;
@@ -171,26 +171,27 @@ export default function AnalyticsDashboard({ onSelectUser }: AnalyticsDashboardP
             <PayoutColumn
               label="Earned So Far"
               sublabel="If sales stopped today"
-              headlineLabel="Revenue"
-              headlineValue={fmt(data.projectedPayout.revenue)}
+              revenue={data.projectedPayout.revenue}
+              paypalFees={data.projectedPayout.earned.paypalFees}
+              netAfterPayPal={data.projectedPayout.earned.netAfterPayPal}
               owner1={data.projectedPayout.earned.owner1Payout}
               owner2={data.projectedPayout.earned.owner2Payout}
-              fafoOperatingBudgetFunded={data.projectedPayout.earned.fafoOperatingBudgetFunded}
-              fafoAdditionalReserve={data.projectedPayout.earned.fafoAdditionalReserve}
-              fafoTotalRetained={data.projectedPayout.earned.fafoTotalRetained}
+              fafoAllocation={data.projectedPayout.earned.fafoAllocation}
+              fafoReserve={data.projectedPayout.earned.fafoReserve}
               amountNeededToUnlock={data.projectedPayout.earned.amountNeededToUnlock}
               unlocked={data.projectedPayout.earned.payoutsUnlocked}
             />
             <PayoutColumn
               label="Projected Month End"
               sublabel="At the current pace"
-              headlineLabel="Projected Revenue"
-              headlineValue={fmt(data.projectedPayout.projectedGrossRevenue)}
+              revenue={data.projectedPayout.projectedGrossRevenue}
+              revenueLabel="Projected Revenue"
+              paypalFees={data.projectedPayout.projectedPayPalFees}
+              netAfterPayPal={data.projectedPayout.projectedNetAfterPayPal}
               owner1={data.projectedPayout.owner1Payout}
               owner2={data.projectedPayout.owner2Payout}
-              fafoOperatingBudgetFunded={data.projectedPayout.fafoOperatingBudgetFunded}
-              fafoAdditionalReserve={data.projectedPayout.fafoAdditionalReserve}
-              fafoTotalRetained={data.projectedPayout.fafoTotalRetained}
+              fafoAllocation={data.projectedPayout.fafoAllocation}
+              fafoReserve={data.projectedPayout.fafoReserve}
               amountNeededToUnlock={data.projectedPayout.amountNeededToUnlock}
               unlocked={data.projectedPayout.payoutsUnlocked}
               accent
@@ -305,46 +306,55 @@ export default function AnalyticsDashboard({ onSelectUser }: AnalyticsDashboardP
   );
 }
 
-function PayoutColumn({ label, sublabel, headlineLabel, headlineValue, owner1, owner2, fafoOperatingBudgetFunded, fafoAdditionalReserve, fafoTotalRetained, amountNeededToUnlock, unlocked, accent }: {
-  label: string; sublabel: string; headlineLabel: string; headlineValue: string;
-  owner1: number; owner2: number; fafoOperatingBudgetFunded: number; fafoAdditionalReserve: number; fafoTotalRetained: number;
+function PayoutColumn({
+  label, sublabel, revenue, revenueLabel, paypalFees, netAfterPayPal,
+  owner1, owner2, fafoAllocation, fafoReserve, amountNeededToUnlock, unlocked, accent
+}: {
+  label: string; sublabel: string; revenue: number; revenueLabel?: string; paypalFees: number; netAfterPayPal: number;
+  owner1: number; owner2: number; fafoAllocation: number; fafoReserve: number;
   amountNeededToUnlock: number; unlocked: boolean; accent?: boolean;
 }) {
   const fmt = (n: number) => `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   return (
     <div className={`rounded-xl p-4 space-y-4 border ${accent ? 'bg-primary/[0.04] border-primary/10' : 'bg-white/[0.015] border-white/[0.04]'}`}>
-      <div>
-        <div className="flex items-baseline justify-between">
-          <span className="text-[10px] font-black uppercase tracking-widest text-white/40">{label}</span>
-          <span className="text-[9px] font-bold text-white/20">{sublabel}</span>
-        </div>
-        <div className="text-[10px] font-bold uppercase tracking-widest text-white/20 mt-2">{headlineLabel}</div>
-        <div className={`text-xl font-black tabular-nums ${accent ? 'text-primary' : 'text-white/80'}`}>{headlineValue}</div>
+      <div className="flex items-baseline justify-between">
+        <span className="text-[10px] font-black uppercase tracking-widest text-white/40">{label}</span>
+        <span className="text-[9px] font-bold text-white/20">{sublabel}</span>
       </div>
-      <div className="grid grid-cols-3 gap-2">
-        {/* FAFO takes the first $80 of net revenue off the top; the 40/40/20
-            split only applies to whatever's left above that. So owners are
-            genuinely $0 until net-after-PayPal exceeds $80 - not "accrued
-            but locked," there's nothing above $80 yet to split. */}
+
+      {/* All of net-after-PayPal is always split 40/40/20 - each owner's
+          40% is a real accrued amount, shown in full regardless of lock
+          state. "Locked" only means FAFO's own 20% hasn't yet covered its
+          flat $80 operating budget - it never reduces what's been earned. */}
+      <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+        <ExpenseLine label={revenueLabel || 'Revenue'} value={fmt(revenue)} />
+        <ExpenseLine label="PayPal Fees" value={fmt(paypalFees)} />
+        <ExpenseLine label="Net After PayPal" value={fmt(netAfterPayPal)} />
+        <ExpenseLine label="FAFO 20% Allocation" value={fmt(fafoAllocation)} />
+      </div>
+
+      <div className="pt-3 border-t border-white/5 grid grid-cols-2 gap-3">
         <div>
           <div className="text-[9px] font-black uppercase tracking-widest text-white/20">Owner 1</div>
-          <div className={`text-sm font-black tabular-nums ${unlocked ? 'text-green-500' : 'text-white/30'}`}>{fmt(owner1)}</div>
+          <div className={`text-lg font-black tabular-nums ${accent ? 'text-primary' : 'text-white/80'}`}>{fmt(owner1)}</div>
         </div>
         <div>
           <div className="text-[9px] font-black uppercase tracking-widest text-white/20">Owner 2</div>
-          <div className={`text-sm font-black tabular-nums ${unlocked ? 'text-green-500' : 'text-white/30'}`}>{fmt(owner2)}</div>
-        </div>
-        <div>
-          <div className="text-[9px] font-black uppercase tracking-widest text-white/20">FAFO Total Retained</div>
-          <div className="text-sm font-black tabular-nums text-white/60">{fmt(fafoTotalRetained)}</div>
+          <div className={`text-lg font-black tabular-nums ${accent ? 'text-primary' : 'text-white/80'}`}>{fmt(owner2)}</div>
         </div>
       </div>
-      <div className="text-[9px] font-bold text-white/20">
-        {fmt(fafoOperatingBudgetFunded)} operating budget + {fmt(fafoAdditionalReserve)} reserve
+
+      <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+        <ExpenseLine label="Operating Budget" value="$80.00" />
+        <ExpenseLine label="FAFO Reserve / Overflow" value={fmt(fafoReserve)} />
+      </div>
+
+      <div className={`text-[10px] font-black uppercase tracking-widest ${unlocked ? 'text-green-500' : 'text-yellow-500/80'}`}>
+        Payout Status: {unlocked ? 'Available' : 'Locked'}
       </div>
       {!unlocked && (
-        <div className="text-[9px] font-bold text-yellow-500/70">
-          Payouts locked — {fmt(amountNeededToUnlock)} more needed to fund the $80 operating budget.
+        <div className="text-[9px] font-bold text-white/30">
+          {fmt(amountNeededToUnlock)} more needed to cover FAFO's $80 monthly operating budget.
         </div>
       )}
     </div>

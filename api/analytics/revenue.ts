@@ -166,30 +166,30 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const PAYPAL_FEE_PER_TRANSACTION = 2.25;
     const FIXED_EXPENSES = { github: 40, vercel: 20, hostinger: 18.99 };
     const fixedExpensesTotal = FIXED_EXPENSES.github + FIXED_EXPENSES.vercel + FIXED_EXPENSES.hostinger; // 78.99, display-only
-    // FAFO takes the first $80 of net revenue (after PayPal fees) off the
-    // top as its operating budget, BEFORE the 40/40/20 split - not a
-    // threshold on FAFO's 20% share (that was the previous, wrong model).
-    // Only revenue ABOVE $80 gets split three ways; owners get $0 until
-    // net-after-PayPal itself exceeds $80.
+    // ALL of net-after-PayPal is always split 40/40/20 - the percentages
+    // never change and the $80 operating budget is never subtracted before
+    // the split (it comes only out of FAFO's own 20% share afterward).
+    // Each owner's 40% is a real ACCRUED amount from the start of the month
+    // and is always shown in full - "locked" is a distribution STATUS
+    // (can FAFO's share cover its own $80 budget yet?), never a reason to
+    // zero out money that's actually been earned.
     const MONTHLY_OPERATING_BUDGET = 80.00;
     const round2 = (n: number) => parseFloat(n.toFixed(2));
 
     function splitPayout(netAfterPayPal: number) {
       const net = Math.max(0, netAfterPayPal); // guards only the pathological case where fees exceed revenue
-      const unlocked = net > MONTHLY_OPERATING_BUDGET;
-      const fafoOperatingBudgetFunded = Math.min(net, MONTHLY_OPERATING_BUDGET);
-      const amountAvailableForSplit = unlocked ? net - MONTHLY_OPERATING_BUDGET : 0;
-      const owner1Payout = amountAvailableForSplit * 0.4;
-      const owner2Payout = amountAvailableForSplit * 0.4;
-      const fafoAdditionalReserve = amountAvailableForSplit * 0.2;
+      const owner1Payout = net * 0.4;
+      const owner2Payout = net * 0.4;
+      const fafoAllocation = net * 0.2;
+      const unlocked = fafoAllocation >= MONTHLY_OPERATING_BUDGET;
+      const fafoReserve = Math.max(0, fafoAllocation - MONTHLY_OPERATING_BUDGET);
       return {
         payoutsUnlocked: unlocked,
         owner1Payout: round2(owner1Payout),
         owner2Payout: round2(owner2Payout),
-        fafoOperatingBudgetFunded: round2(fafoOperatingBudgetFunded),
-        fafoAdditionalReserve: round2(fafoAdditionalReserve),
-        fafoTotalRetained: round2(fafoOperatingBudgetFunded + fafoAdditionalReserve),
-        amountNeededToUnlock: round2(Math.max(0, MONTHLY_OPERATING_BUDGET - net))
+        fafoAllocation: round2(fafoAllocation),
+        fafoReserve: round2(fafoReserve),
+        amountNeededToUnlock: round2(Math.max(0, MONTHLY_OPERATING_BUDGET - fafoAllocation))
       };
     }
 
@@ -217,12 +217,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         paypalFees: round2(projectedPayPalFees),
         total: round2(fixedExpensesTotal + projectedPayPalFees)
       },
-      projectedNetProfit: round2(projectedNetAfterPayPal),
+      projectedPayPalFees: round2(projectedPayPalFees),
+      projectedNetAfterPayPal: round2(projectedNetAfterPayPal),
       ...projectedSplit,
       earned: {
         paypalFees: round2(earnedPayPalFees),
-        expenses: round2(fixedExpensesTotal + earnedPayPalFees),
-        netProfit: round2(earnedNetAfterPayPal),
+        netAfterPayPal: round2(earnedNetAfterPayPal),
         ...earnedSplit
       }
     };
