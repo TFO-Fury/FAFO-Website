@@ -128,18 +128,78 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     let thisMonthRevenue = 0;
     let lastMonthRevenue = 0;
+    let thisMonthPaidTransactions = 0;
     momSnapshot.docs.forEach(doc => {
       const d = doc.data();
       const amt = countedAmount(d, 'RevenueMoM', doc.id);
       if (amt === null) return;
       const date = d.createdAt?.toDate ? d.createdAt.toDate() : new Date(d.createdAt);
-      if (date >= thisMonthStart) thisMonthRevenue += amt;
-      else if (date >= lastMonthStart) lastMonthRevenue += amt;
+      if (date >= thisMonthStart) {
+        thisMonthRevenue += amt;
+        thisMonthPaidTransactions += 1; // countedAmount already excludes $0/incomplete/excluded orders
+      } else if (date >= lastMonthStart) {
+        lastMonthRevenue += amt;
+      }
     });
 
     const monthOverMonthPercent = lastMonthRevenue > 0
       ? ((thisMonthRevenue - lastMonthRevenue) / lastMonthRevenue) * 100
       : (thisMonthRevenue > 0 ? null : 0); // null = no prior-month baseline to compare against
+
+    // Projected Monthly Payout - projects the current month's pace (revenue
+    // and paid-transaction rate) through the rest of the month, deducts
+    // fixed hosting costs + a per-transaction PayPal fee budget, then splits
+    // what's left 40/40/20 between the two owners and the business account.
+    // "Earned so far" runs the identical expense/split logic against the
+    // actual (non-projected) month-to-date numbers, so the dashboard can
+    // show both "if we stopped selling today" and "at the current pace."
+    const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+    const daysElapsed = now.getDate();
+
+    const PAYPAL_FEE_PER_TRANSACTION = 2.25;
+    const FIXED_EXPENSES = { github: 40, vercel: 20, hostinger: 18.99 };
+    const fixedExpensesTotal = FIXED_EXPENSES.github + FIXED_EXPENSES.vercel + FIXED_EXPENSES.hostinger;
+
+    const projectedGrossRevenue = (thisMonthRevenue / daysElapsed) * daysInMonth;
+    const projectedTransactions = Math.round((thisMonthPaidTransactions / daysElapsed) * daysInMonth);
+    const projectedPayPalFees = projectedTransactions * PAYPAL_FEE_PER_TRANSACTION;
+    const projectedExpenses = fixedExpensesTotal + projectedPayPalFees;
+    const projectedNetProfit = projectedGrossRevenue - projectedExpenses;
+    const projectedNetForSplit = Math.max(0, projectedNetProfit);
+
+    const earnedPayPalFees = thisMonthPaidTransactions * PAYPAL_FEE_PER_TRANSACTION;
+    const earnedExpenses = fixedExpensesTotal + earnedPayPalFees;
+    const earnedNetProfit = thisMonthRevenue - earnedExpenses;
+    const earnedNetForSplit = Math.max(0, earnedNetProfit);
+
+    const round2 = (n: number) => parseFloat(n.toFixed(2));
+    const projectedPayout = {
+      daysElapsed,
+      daysInMonth,
+      revenue: round2(thisMonthRevenue),
+      paidTransactions: thisMonthPaidTransactions,
+      projectedGrossRevenue: round2(projectedGrossRevenue),
+      projectedTransactions,
+      expenses: {
+        github: FIXED_EXPENSES.github,
+        vercel: FIXED_EXPENSES.vercel,
+        hostinger: FIXED_EXPENSES.hostinger,
+        paypalFees: round2(projectedPayPalFees),
+        total: round2(projectedExpenses)
+      },
+      projectedNetProfit: round2(projectedNetProfit),
+      owner1Payout: round2(projectedNetForSplit * 0.4),
+      owner2Payout: round2(projectedNetForSplit * 0.4),
+      fafoRetained: round2(projectedNetForSplit * 0.2),
+      earned: {
+        paypalFees: round2(earnedPayPalFees),
+        expenses: round2(earnedExpenses),
+        netProfit: round2(earnedNetProfit),
+        owner1Payout: round2(earnedNetForSplit * 0.4),
+        owner2Payout: round2(earnedNetForSplit * 0.4),
+        fafoRetained: round2(earnedNetForSplit * 0.2)
+      }
+    };
 
     // Count active subscribers from users collection
     const usersSnap = await firestore.collection('users').get();
@@ -174,6 +234,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       thisMonthRevenue: parseFloat(thisMonthRevenue.toFixed(2)),
       lastMonthRevenue: parseFloat(lastMonthRevenue.toFixed(2)),
       monthOverMonthPercent: monthOverMonthPercent === null ? null : parseFloat(monthOverMonthPercent.toFixed(1)),
+      projectedPayout,
       activeSubscribers,
       aioSubscribers,
       singleSubscribers,

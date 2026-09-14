@@ -8,6 +8,20 @@ interface RevenueData {
   thisMonthRevenue: number;
   lastMonthRevenue: number;
   monthOverMonthPercent: number | null;
+  projectedPayout: {
+    daysElapsed: number;
+    daysInMonth: number;
+    revenue: number;
+    paidTransactions: number;
+    projectedGrossRevenue: number;
+    projectedTransactions: number;
+    expenses: { github: number; vercel: number; hostinger: number; paypalFees: number; total: number };
+    projectedNetProfit: number;
+    owner1Payout: number;
+    owner2Payout: number;
+    fafoRetained: number;
+    earned: { paypalFees: number; expenses: number; netProfit: number; owner1Payout: number; owner2Payout: number; fafoRetained: number };
+  } | null;
   activeSubscribers: number;
   aioSubscribers: number;
   singleSubscribers: number;
@@ -140,6 +154,48 @@ export default function AnalyticsDashboard({ onSelectUser }: AnalyticsDashboardP
         <Card icon={<Calendar className="w-4 h-4" />} label="Period" value={filter.label} accent="text-white/40" />
       </div>
 
+      {/* Projected Monthly Payout */}
+      {data?.projectedPayout && (
+        <div className="bg-white/[0.02] border border-white/[0.04] rounded-2xl p-5 space-y-5">
+          <h3 className="text-xs font-black uppercase tracking-widest text-white/40">Projected Monthly Payout</h3>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <PayoutColumn
+              label="Earned So Far"
+              sublabel="If sales stopped today"
+              headlineLabel="Revenue"
+              headlineValue={fmt(data.projectedPayout.revenue)}
+              owner1={data.projectedPayout.earned.owner1Payout}
+              owner2={data.projectedPayout.earned.owner2Payout}
+              fafo={data.projectedPayout.earned.fafoRetained}
+            />
+            <PayoutColumn
+              label="Projected Month End"
+              sublabel="At the current pace"
+              headlineLabel="Projected Revenue"
+              headlineValue={fmt(data.projectedPayout.projectedGrossRevenue)}
+              owner1={data.projectedPayout.owner1Payout}
+              owner2={data.projectedPayout.owner2Payout}
+              fafo={data.projectedPayout.fafoRetained}
+              accent
+            />
+          </div>
+
+          <div className="pt-4 border-t border-white/5 grid grid-cols-2 sm:grid-cols-5 gap-3">
+            <ExpenseLine label="PayPal Fees" value={fmt(data.projectedPayout.expenses.paypalFees)} />
+            <ExpenseLine label="GitHub" value={fmt(data.projectedPayout.expenses.github)} />
+            <ExpenseLine label="Vercel" value={fmt(data.projectedPayout.expenses.vercel)} />
+            <ExpenseLine label="Hostinger" value={fmt(data.projectedPayout.expenses.hostinger)} />
+            <ExpenseLine label="Total Projected Expenses" value={fmt(data.projectedPayout.expenses.total)} accent />
+          </div>
+
+          <p className="text-[10px] font-bold text-white/20">
+            Based on {fmt(data.projectedPayout.revenue)} revenue and {data.projectedPayout.paidTransactions} paid transaction{data.projectedPayout.paidTransactions === 1 ? '' : 's'} through{' '}
+            {new Date().toLocaleDateString(undefined, { month: 'long', day: 'numeric' })} (day {data.projectedPayout.daysElapsed} of {data.projectedPayout.daysInMonth}).
+          </p>
+        </div>
+      )}
+
       {/* Daily Revenue Bars */}
       {dailyEntries.length > 0 && (
         <div className="bg-white/[0.02] border border-white/[0.04] rounded-2xl p-5 space-y-4">
@@ -229,6 +285,48 @@ export default function AnalyticsDashboard({ onSelectUser }: AnalyticsDashboardP
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function PayoutColumn({ label, sublabel, headlineLabel, headlineValue, owner1, owner2, fafo, accent }: {
+  label: string; sublabel: string; headlineLabel: string; headlineValue: string;
+  owner1: number; owner2: number; fafo: number; accent?: boolean;
+}) {
+  const fmt = (n: number) => `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  return (
+    <div className={`rounded-xl p-4 space-y-4 border ${accent ? 'bg-primary/[0.04] border-primary/10' : 'bg-white/[0.015] border-white/[0.04]'}`}>
+      <div>
+        <div className="flex items-baseline justify-between">
+          <span className="text-[10px] font-black uppercase tracking-widest text-white/40">{label}</span>
+          <span className="text-[9px] font-bold text-white/20">{sublabel}</span>
+        </div>
+        <div className="text-[10px] font-bold uppercase tracking-widest text-white/20 mt-2">{headlineLabel}</div>
+        <div className={`text-xl font-black tabular-nums ${accent ? 'text-primary' : 'text-white/80'}`}>{headlineValue}</div>
+      </div>
+      <div className="grid grid-cols-3 gap-2">
+        <div>
+          <div className="text-[9px] font-black uppercase tracking-widest text-white/20">Owner 1</div>
+          <div className="text-sm font-black tabular-nums text-green-500">{fmt(owner1)}</div>
+        </div>
+        <div>
+          <div className="text-[9px] font-black uppercase tracking-widest text-white/20">Owner 2</div>
+          <div className="text-sm font-black tabular-nums text-green-500">{fmt(owner2)}</div>
+        </div>
+        <div>
+          <div className="text-[9px] font-black uppercase tracking-widest text-white/20">FAFO Retained</div>
+          <div className="text-sm font-black tabular-nums text-white/60">{fmt(fafo)}</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ExpenseLine({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
+  return (
+    <div>
+      <div className="text-[9px] font-black uppercase tracking-widest text-white/20 truncate">{label}</div>
+      <div className={`text-xs font-bold tabular-nums ${accent ? 'text-primary' : 'text-white/60'}`}>{value}</div>
     </div>
   );
 }
