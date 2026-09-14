@@ -346,7 +346,6 @@ function PayoutColumn({
       </div>
 
       <div className="grid grid-cols-2 gap-x-4 gap-y-2">
-        <ExpenseLine label="Operating Budget" value="$80.00" />
         <ExpenseLine label="FAFO Taxes/Fees" value={fmt(fafoReserve)} />
       </div>
 
