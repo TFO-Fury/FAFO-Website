@@ -198,15 +198,7 @@ export default function AnalyticsDashboard({ onSelectUser }: AnalyticsDashboardP
             />
           </div>
 
-          <div className="pt-4 border-t border-white/5 grid grid-cols-2 sm:grid-cols-5 gap-3">
-            <ExpenseLine label="PayPal Fees" value={fmt(data.projectedPayout.expenses.paypalFees)} />
-            <ExpenseLine label="GitHub" value={fmt(data.projectedPayout.expenses.github)} note="Can go up with more pushes" />
-            <ExpenseLine label="Vercel" value={fmt(data.projectedPayout.expenses.vercel)} />
-            <ExpenseLine label="Hostinger" value={fmt(data.projectedPayout.expenses.hostinger)} />
-            <ExpenseLine label="Total Projected Expenses" value={fmt(data.projectedPayout.expenses.total)} accent />
-          </div>
-
-          <p className="text-[10px] font-bold text-white/20">
+          <p className="text-[10px] font-bold text-white/20 pt-4 border-t border-white/5">
             Based on {fmt(data.projectedPayout.revenue)} revenue and {data.projectedPayout.paidTransactions} paid transaction{data.projectedPayout.paidTransactions === 1 ? '' : 's'} through{' '}
             {new Date().toLocaleDateString(undefined, { month: 'long', day: 'numeric' })} (day {data.projectedPayout.daysElapsed} of {data.projectedPayout.daysInMonth}).
           </p>
