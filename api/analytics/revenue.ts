@@ -192,6 +192,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const earnedFafoRemaining = earnedFafoAllocation - MONTHLY_OPERATING_EXPENSE_REQUIREMENT; // may be negative
 
     const round2 = (n: number) => parseFloat(n.toFixed(2));
+    // "Locked" is a distribution STATUS, not a value - each owner's 40% is
+    // always the real accrued amount (money already earned), never zeroed
+    // out. The lock only gates whether it can actually be paid out yet.
+    // FAFO's own figure is never shown negative: below the $80 threshold it
+    // shows raw progress toward $80 (fafoAllocated); at/above threshold it
+    // shows the surplus reserve beyond $80 (fafoRemaining, >= 0).
     const projectedPayout = {
       daysElapsed,
       daysInMonth,
@@ -208,17 +214,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       },
       projectedNetProfit: round2(projectedNetAfterPayPal),
       payoutsUnlocked: projectedPayoutsUnlocked,
-      owner1Payout: round2(projectedPayoutsUnlocked ? projectedNetForSplit * 0.4 : 0),
-      owner2Payout: round2(projectedPayoutsUnlocked ? projectedNetForSplit * 0.4 : 0),
-      fafoRetained: round2(projectedFafoRemaining),
+      owner1Payout: round2(projectedNetForSplit * 0.4),
+      owner2Payout: round2(projectedNetForSplit * 0.4),
+      fafoAllocated: round2(projectedFafoAllocation),
+      fafoRemaining: round2(Math.max(0, projectedFafoRemaining)),
+      amountNeededToUnlock: round2(Math.max(0, MONTHLY_OPERATING_EXPENSE_REQUIREMENT - projectedFafoAllocation)),
       earned: {
         paypalFees: round2(earnedPayPalFees),
         expenses: round2(fixedExpensesTotal + earnedPayPalFees),
         netProfit: round2(earnedNetAfterPayPal),
         payoutsUnlocked: earnedPayoutsUnlocked,
-        owner1Payout: round2(earnedPayoutsUnlocked ? earnedNetForSplit * 0.4 : 0),
-        owner2Payout: round2(earnedPayoutsUnlocked ? earnedNetForSplit * 0.4 : 0),
-        fafoRetained: round2(earnedFafoRemaining)
+        owner1Payout: round2(earnedNetForSplit * 0.4),
+        owner2Payout: round2(earnedNetForSplit * 0.4),
+        fafoAllocated: round2(earnedFafoAllocation),
+        fafoRemaining: round2(Math.max(0, earnedFafoRemaining)),
+        amountNeededToUnlock: round2(Math.max(0, MONTHLY_OPERATING_EXPENSE_REQUIREMENT - earnedFafoAllocation))
       }
     };
 

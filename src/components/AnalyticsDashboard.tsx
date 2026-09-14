@@ -20,8 +20,13 @@ interface RevenueData {
     payoutsUnlocked: boolean;
     owner1Payout: number;
     owner2Payout: number;
-    fafoRetained: number;
-    earned: { paypalFees: number; expenses: number; netProfit: number; payoutsUnlocked: boolean; owner1Payout: number; owner2Payout: number; fafoRetained: number };
+    fafoAllocated: number;
+    fafoRemaining: number;
+    amountNeededToUnlock: number;
+    earned: {
+      paypalFees: number; expenses: number; netProfit: number; payoutsUnlocked: boolean;
+      owner1Payout: number; owner2Payout: number; fafoAllocated: number; fafoRemaining: number; amountNeededToUnlock: number;
+    };
   } | null;
   activeSubscribers: number;
   aioSubscribers: number;
@@ -168,7 +173,9 @@ export default function AnalyticsDashboard({ onSelectUser }: AnalyticsDashboardP
               headlineValue={fmt(data.projectedPayout.revenue)}
               owner1={data.projectedPayout.earned.owner1Payout}
               owner2={data.projectedPayout.earned.owner2Payout}
-              fafo={data.projectedPayout.earned.fafoRetained}
+              fafoAllocated={data.projectedPayout.earned.fafoAllocated}
+              fafoRemaining={data.projectedPayout.earned.fafoRemaining}
+              amountNeededToUnlock={data.projectedPayout.earned.amountNeededToUnlock}
               unlocked={data.projectedPayout.earned.payoutsUnlocked}
             />
             <PayoutColumn
@@ -178,7 +185,9 @@ export default function AnalyticsDashboard({ onSelectUser }: AnalyticsDashboardP
               headlineValue={fmt(data.projectedPayout.projectedGrossRevenue)}
               owner1={data.projectedPayout.owner1Payout}
               owner2={data.projectedPayout.owner2Payout}
-              fafo={data.projectedPayout.fafoRetained}
+              fafoAllocated={data.projectedPayout.fafoAllocated}
+              fafoRemaining={data.projectedPayout.fafoRemaining}
+              amountNeededToUnlock={data.projectedPayout.amountNeededToUnlock}
               unlocked={data.projectedPayout.payoutsUnlocked}
               accent
             />
@@ -292,11 +301,12 @@ export default function AnalyticsDashboard({ onSelectUser }: AnalyticsDashboardP
   );
 }
 
-function PayoutColumn({ label, sublabel, headlineLabel, headlineValue, owner1, owner2, fafo, unlocked, accent }: {
+function PayoutColumn({ label, sublabel, headlineLabel, headlineValue, owner1, owner2, fafoAllocated, fafoRemaining, amountNeededToUnlock, unlocked, accent }: {
   label: string; sublabel: string; headlineLabel: string; headlineValue: string;
-  owner1: number; owner2: number; fafo: number; unlocked: boolean; accent?: boolean;
+  owner1: number; owner2: number; fafoAllocated: number; fafoRemaining: number; amountNeededToUnlock: number;
+  unlocked: boolean; accent?: boolean;
 }) {
-  const fmt = (n: number) => `${n < 0 ? '-' : ''}$${Math.abs(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const fmt = (n: number) => `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   return (
     <div className={`rounded-xl p-4 space-y-4 border ${accent ? 'bg-primary/[0.04] border-primary/10' : 'bg-white/[0.015] border-white/[0.04]'}`}>
       <div>
@@ -308,22 +318,31 @@ function PayoutColumn({ label, sublabel, headlineLabel, headlineValue, owner1, o
         <div className={`text-xl font-black tabular-nums ${accent ? 'text-primary' : 'text-white/80'}`}>{headlineValue}</div>
       </div>
       <div className="grid grid-cols-3 gap-2">
+        {/* Owner amounts are the real accrued payout - always shown in full.
+            The lock only gates whether it can be distributed yet, it never
+            zeroes out money that's actually been earned. */}
         <div>
           <div className="text-[9px] font-black uppercase tracking-widest text-white/20">Owner 1</div>
-          <div className={`text-sm font-black tabular-nums ${unlocked ? 'text-green-500' : 'text-white/30'}`}>{fmt(owner1)}</div>
+          <div className="text-sm font-black tabular-nums text-green-500">{fmt(owner1)}</div>
         </div>
         <div>
           <div className="text-[9px] font-black uppercase tracking-widest text-white/20">Owner 2</div>
-          <div className={`text-sm font-black tabular-nums ${unlocked ? 'text-green-500' : 'text-white/30'}`}>{fmt(owner2)}</div>
+          <div className="text-sm font-black tabular-nums text-green-500">{fmt(owner2)}</div>
         </div>
         <div>
-          <div className="text-[9px] font-black uppercase tracking-widest text-white/20">FAFO Remaining</div>
-          <div className={`text-sm font-black tabular-nums ${fafo < 0 ? 'text-red-500' : 'text-white/60'}`}>{fmt(fafo)}</div>
+          <div className="text-[9px] font-black uppercase tracking-widest text-white/20">
+            {unlocked ? 'FAFO Remaining' : 'FAFO Operating Budget'}
+          </div>
+          {unlocked ? (
+            <div className="text-sm font-black tabular-nums text-white/60">{fmt(fafoRemaining)}</div>
+          ) : (
+            <div className="text-sm font-black tabular-nums text-white/60">{fmt(fafoAllocated)} <span className="text-white/20">/ $80.00</span></div>
+          )}
         </div>
       </div>
       {!unlocked && (
         <div className="text-[9px] font-bold text-yellow-500/70">
-          Payouts locked until FAFO's share covers the $80 operating budget
+          Payouts locked — {fmt(amountNeededToUnlock)} more needed to cover FAFO's $80 monthly operating budget.
         </div>
       )}
     </div>
