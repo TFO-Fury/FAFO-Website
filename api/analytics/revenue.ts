@@ -166,38 +166,43 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const PAYPAL_FEE_PER_TRANSACTION = 2.25;
     const FIXED_EXPENSES = { github: 40, vercel: 20, hostinger: 18.99 };
     const fixedExpensesTotal = FIXED_EXPENSES.github + FIXED_EXPENSES.vercel + FIXED_EXPENSES.hostinger; // 78.99, display-only
-    // Payout-unlock threshold is a flat, rounded-up $80 - deliberately NOT
-    // the same as the $78.99 real cost total above. Owner payouts stay
-    // locked at $0 until FAFO's own 20% allocation reaches this amount;
-    // once it does, each owner's full accrued 40% becomes available, and
-    // anything FAFO's 20% holds beyond $80 just stays in FAFO as reserve.
-    const MONTHLY_OPERATING_EXPENSE_REQUIREMENT = 80.00;
+    // FAFO takes the first $80 of net revenue (after PayPal fees) off the
+    // top as its operating budget, BEFORE the 40/40/20 split - not a
+    // threshold on FAFO's 20% share (that was the previous, wrong model).
+    // Only revenue ABOVE $80 gets split three ways; owners get $0 until
+    // net-after-PayPal itself exceeds $80.
+    const MONTHLY_OPERATING_BUDGET = 80.00;
+    const round2 = (n: number) => parseFloat(n.toFixed(2));
+
+    function splitPayout(netAfterPayPal: number) {
+      const net = Math.max(0, netAfterPayPal); // guards only the pathological case where fees exceed revenue
+      const unlocked = net > MONTHLY_OPERATING_BUDGET;
+      const fafoOperatingBudgetFunded = Math.min(net, MONTHLY_OPERATING_BUDGET);
+      const amountAvailableForSplit = unlocked ? net - MONTHLY_OPERATING_BUDGET : 0;
+      const owner1Payout = amountAvailableForSplit * 0.4;
+      const owner2Payout = amountAvailableForSplit * 0.4;
+      const fafoAdditionalReserve = amountAvailableForSplit * 0.2;
+      return {
+        payoutsUnlocked: unlocked,
+        owner1Payout: round2(owner1Payout),
+        owner2Payout: round2(owner2Payout),
+        fafoOperatingBudgetFunded: round2(fafoOperatingBudgetFunded),
+        fafoAdditionalReserve: round2(fafoAdditionalReserve),
+        fafoTotalRetained: round2(fafoOperatingBudgetFunded + fafoAdditionalReserve),
+        amountNeededToUnlock: round2(Math.max(0, MONTHLY_OPERATING_BUDGET - net))
+      };
+    }
 
     const projectedGrossRevenue = (thisMonthRevenue / daysElapsed) * daysInMonth;
     const projectedTransactions = Math.round((thisMonthPaidTransactions / daysElapsed) * daysInMonth);
     const projectedPayPalFees = projectedTransactions * PAYPAL_FEE_PER_TRANSACTION;
     const projectedNetAfterPayPal = projectedGrossRevenue - projectedPayPalFees;
-    // Floor only guards the pathological case where PayPal fees alone exceed
-    // revenue - not related to FAFO's operating-expense shortfall below.
-    const projectedNetForSplit = Math.max(0, projectedNetAfterPayPal);
-    const projectedFafoAllocation = projectedNetForSplit * 0.2;
-    const projectedPayoutsUnlocked = projectedFafoAllocation >= MONTHLY_OPERATING_EXPENSE_REQUIREMENT;
-    const projectedFafoRemaining = projectedFafoAllocation - MONTHLY_OPERATING_EXPENSE_REQUIREMENT; // may be negative
+    const projectedSplit = splitPayout(projectedNetAfterPayPal);
 
     const earnedPayPalFees = thisMonthPaidTransactions * PAYPAL_FEE_PER_TRANSACTION;
     const earnedNetAfterPayPal = thisMonthRevenue - earnedPayPalFees;
-    const earnedNetForSplit = Math.max(0, earnedNetAfterPayPal);
-    const earnedFafoAllocation = earnedNetForSplit * 0.2;
-    const earnedPayoutsUnlocked = earnedFafoAllocation >= MONTHLY_OPERATING_EXPENSE_REQUIREMENT;
-    const earnedFafoRemaining = earnedFafoAllocation - MONTHLY_OPERATING_EXPENSE_REQUIREMENT; // may be negative
+    const earnedSplit = splitPayout(earnedNetAfterPayPal);
 
-    const round2 = (n: number) => parseFloat(n.toFixed(2));
-    // "Locked" is a distribution STATUS, not a value - each owner's 40% is
-    // always the real accrued amount (money already earned), never zeroed
-    // out. The lock only gates whether it can actually be paid out yet.
-    // FAFO's own figure is never shown negative: below the $80 threshold it
-    // shows raw progress toward $80 (fafoAllocated); at/above threshold it
-    // shows the surplus reserve beyond $80 (fafoRemaining, >= 0).
     const projectedPayout = {
       daysElapsed,
       daysInMonth,
@@ -213,22 +218,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         total: round2(fixedExpensesTotal + projectedPayPalFees)
       },
       projectedNetProfit: round2(projectedNetAfterPayPal),
-      payoutsUnlocked: projectedPayoutsUnlocked,
-      owner1Payout: round2(projectedNetForSplit * 0.4),
-      owner2Payout: round2(projectedNetForSplit * 0.4),
-      fafoAllocated: round2(projectedFafoAllocation),
-      fafoRemaining: round2(Math.max(0, projectedFafoRemaining)),
-      amountNeededToUnlock: round2(Math.max(0, MONTHLY_OPERATING_EXPENSE_REQUIREMENT - projectedFafoAllocation)),
+      ...projectedSplit,
       earned: {
         paypalFees: round2(earnedPayPalFees),
         expenses: round2(fixedExpensesTotal + earnedPayPalFees),
         netProfit: round2(earnedNetAfterPayPal),
-        payoutsUnlocked: earnedPayoutsUnlocked,
-        owner1Payout: round2(earnedNetForSplit * 0.4),
-        owner2Payout: round2(earnedNetForSplit * 0.4),
-        fafoAllocated: round2(earnedFafoAllocation),
-        fafoRemaining: round2(Math.max(0, earnedFafoRemaining)),
-        amountNeededToUnlock: round2(Math.max(0, MONTHLY_OPERATING_EXPENSE_REQUIREMENT - earnedFafoAllocation))
+        ...earnedSplit
       }
     };
 
