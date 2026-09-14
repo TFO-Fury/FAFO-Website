@@ -5,7 +5,9 @@ import { DollarSign, Users, TrendingUp, Activity, Calendar, CreditCard, Award, L
 interface RevenueData {
   totalRevenue: number;
   totalOrders: number;
-  mrr: number;
+  thisMonthRevenue: number;
+  lastMonthRevenue: number;
+  monthOverMonthPercent: number | null;
   activeSubscribers: number;
   aioSubscribers: number;
   singleSubscribers: number;
@@ -123,7 +125,13 @@ export default function AnalyticsDashboard({ onSelectUser }: AnalyticsDashboardP
       {/* Cards */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
         <Card icon={<DollarSign className="w-4 h-4" />} label="Total Revenue" value={fmt(data?.totalRevenue || 0)} accent="text-primary" />
-        <Card icon={<TrendingUp className="w-4 h-4" />} label="MRR" value={fmt(data?.mrr || 0)} accent="text-green-500" />
+        <Card
+          icon={<TrendingUp className="w-4 h-4" />}
+          label="This Month's Revenue"
+          value={fmt(data?.thisMonthRevenue || 0)}
+          accent="text-green-500"
+          subtitle={<MonthOverMonthSubtitle percent={data?.monthOverMonthPercent ?? null} />}
+        />
         <Card icon={<Users className="w-4 h-4" />} label="Active Subs" value={`${data?.activeSubscribers || 0}`} accent="text-blue-500" />
         <Card icon={<CreditCard className="w-4 h-4" />} label="Total Orders" value={`${data?.totalOrders || 0}`} accent="text-white/60" />
         <Card icon={<Award className="w-4 h-4" />} label="AIO Subs" value={`${data?.aioSubscribers || 0}`} accent="text-purple-500" />
@@ -225,7 +233,7 @@ export default function AnalyticsDashboard({ onSelectUser }: AnalyticsDashboardP
   );
 }
 
-function Card({ icon, label, value, accent }: { icon: React.ReactNode; label: string; value: string; accent: string }) {
+function Card({ icon, label, value, accent, subtitle }: { icon: React.ReactNode; label: string; value: string; accent: string; subtitle?: React.ReactNode }) {
   return (
     <div className="bg-white/[0.02] border border-white/[0.04] rounded-2xl p-4 space-y-2 hover:border-white/[0.08] transition-colors">
       <div className="flex items-center gap-2">
@@ -233,6 +241,22 @@ function Card({ icon, label, value, accent }: { icon: React.ReactNode; label: st
         <span className="text-[10px] font-black uppercase tracking-widest text-white/20">{label}</span>
       </div>
       <div className={`text-lg font-black tabular-nums ${accent}`}>{value}</div>
+      {subtitle}
+    </div>
+  );
+}
+
+// Independent of the selected date-range tab - always compares the current
+// calendar month to the prior one, so it reads the same everywhere.
+function MonthOverMonthSubtitle({ percent }: { percent: number | null }) {
+  if (percent === null) {
+    return <div className="text-[10px] font-bold text-white/20">No prior month to compare</div>;
+  }
+  const up = percent >= 0;
+  return (
+    <div className={`text-[10px] font-bold flex items-center gap-1 ${up ? 'text-green-500' : 'text-red-500'}`}>
+      <span>{up ? '↑' : '↓'}</span>
+      <span>{Math.abs(percent).toFixed(1)}% from last month</span>
     </div>
   );
 }

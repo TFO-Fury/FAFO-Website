@@ -15,6 +15,37 @@ function startOfMonth(d: Date): Date {
   return r;
 }
 
+function startOfPrevMonth(d: Date): Date {
+  const r = startOfMonth(d);
+  r.setMonth(r.getMonth() - 1);
+  return r;
+}
+
+// Same qualifying-order filter used by the main revenue loop below, factored
+// out so the independent this-month-vs-last-month comparison (which always
+// covers a fixed 2-month window, regardless of whichever date-range tab is
+// selected) applies identical rules instead of drifting out of sync.
+function countedAmount(d: any, logPrefix: string, docId: string): number | null {
+  const currency = (d.currency || 'USD').toUpperCase();
+  if (d.excludedFromRevenue) {
+    console.log(`[${logPrefix}] Ignored excluded order ${docId}: source=${d.source || 'unknown'}, amount=${d.amount}, currency=${currency}`);
+    return null;
+  }
+  if (d.paymentStatus !== 'completed') {
+    console.log(`[${logPrefix}] Ignored incomplete order ${docId}: status=${d.paymentStatus}, amount=${d.amount}`);
+    return null;
+  }
+  if (!d.amount) {
+    console.log(`[${logPrefix}] Ignored zero-amount order ${docId}`);
+    return null;
+  }
+  if (currency !== 'USD') {
+    console.log(`[${logPrefix}] Ignored non-USD order ${docId}: amount=${d.amount}, currency=${currency}`);
+    return null;
+  }
+  return parseFloat(d.amount) || 0;
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'GET') {
     return res.status(405).json({ error: 'Method not allowed' });
@@ -45,7 +76,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     let totalRevenue = 0;
     let totalOrders = 0;
-    let mrr = 0;
     // Zero-fill every day in the requested range up front - otherwise a day
     // with zero completed orders never gets a key at all (the loop below
     // only touches days that had a qualifying order), so the chart silently
@@ -60,32 +90,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const activePayers = new Set<string>();
 
     const now = new Date();
-    const mrrCutoff = new Date();
-    mrrCutoff.setDate(mrrCutoff.getDate() - 30);
 
     snapshot.docs.forEach(doc => {
       const d = doc.data();
       const docId = doc.id;
-      const currency = (d.currency || 'USD').toUpperCase();
+      const amt = countedAmount(d, 'Revenue', docId);
+      if (amt === null) return;
 
-      if (d.excludedFromRevenue) {
-        console.log(`[Revenue] Ignored excluded order ${docId}: source=${d.source || 'unknown'}, amount=${d.amount}, currency=${currency}`);
-        return;
-      }
-      if (d.paymentStatus !== 'completed') {
-        console.log(`[Revenue] Ignored incomplete order ${docId}: status=${d.paymentStatus}, amount=${d.amount}`);
-        return;
-      }
-      if (!d.amount) {
-        console.log(`[Revenue] Ignored zero-amount order ${docId}`);
-        return;
-      }
-      if (currency !== 'USD') {
-        console.log(`[Revenue] Ignored non-USD order ${docId}: amount=${d.amount}, currency=${currency}`);
-        return;
-      }
-
-      const amt = parseFloat(d.amount) || 0;
       totalRevenue += amt;
       totalOrders += 1;
 
@@ -96,15 +107,39 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       daily[dayKey] = (daily[dayKey] || 0) + amt;
       monthly[monthKey] = (monthly[monthKey] || 0) + amt;
 
-      if (date >= mrrCutoff) {
-        mrr += amt;
-      }
-
       if (d.plan) planCounts[d.plan] = (planCounts[d.plan] || 0) + 1;
       if (d.userId) activePayers.add(d.userId);
 
-      console.log(`[Revenue] Counted order ${docId}: source=${d.source || 'unknown'}, plan=${d.plan || 'unknown'}, amount=${amt}, currency=${currency}, date=${dayKey}`);
+      console.log(`[Revenue] Counted order ${docId}: source=${d.source || 'unknown'}, plan=${d.plan || 'unknown'}, amount=${amt}, currency=${d.currency || 'USD'}, date=${dayKey}`);
     });
+
+    // This-Month-vs-Last-Month comparison - deliberately independent of the
+    // days/cutoff above (which follows whichever tab is selected) so this
+    // stat is identical no matter which date-range tab is active, per the
+    // request that it "show on every tab." Replaces the old MRR figure,
+    // which was actually just a hardcoded trailing-30-day revenue sum
+    // mislabeled as Monthly Recurring Revenue.
+    const thisMonthStart = startOfMonth(now);
+    const lastMonthStart = startOfPrevMonth(now);
+    const momSnapshot = await firestore.collection('orders')
+      .where('createdAt', '>=', lastMonthStart)
+      .limit(2000)
+      .get();
+
+    let thisMonthRevenue = 0;
+    let lastMonthRevenue = 0;
+    momSnapshot.docs.forEach(doc => {
+      const d = doc.data();
+      const amt = countedAmount(d, 'RevenueMoM', doc.id);
+      if (amt === null) return;
+      const date = d.createdAt?.toDate ? d.createdAt.toDate() : new Date(d.createdAt);
+      if (date >= thisMonthStart) thisMonthRevenue += amt;
+      else if (date >= lastMonthStart) lastMonthRevenue += amt;
+    });
+
+    const monthOverMonthPercent = lastMonthRevenue > 0
+      ? ((thisMonthRevenue - lastMonthRevenue) / lastMonthRevenue) * 100
+      : (thisMonthRevenue > 0 ? null : 0); // null = no prior-month baseline to compare against
 
     // Count active subscribers from users collection
     const usersSnap = await firestore.collection('users').get();
@@ -136,7 +171,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       success: true,
       totalRevenue: parseFloat(totalRevenue.toFixed(2)),
       totalOrders,
-      mrr: parseFloat(mrr.toFixed(2)),
+      thisMonthRevenue: parseFloat(thisMonthRevenue.toFixed(2)),
+      lastMonthRevenue: parseFloat(lastMonthRevenue.toFixed(2)),
+      monthOverMonthPercent: monthOverMonthPercent === null ? null : parseFloat(monthOverMonthPercent.toFixed(1)),
       activeSubscribers,
       aioSubscribers,
       singleSubscribers,
