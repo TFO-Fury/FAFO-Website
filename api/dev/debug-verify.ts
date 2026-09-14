@@ -10,15 +10,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(403).json({ error: 'Forbidden' });
   }
 
-  const key = (req.query.key as string || '').toUpperCase();
+  const keyPrefix = (req.query.key as string || '').toUpperCase();
   const spec = req.query.spec as string || 'Warrior-Fury';
 
   try {
     const firestore = await getDb();
-    const keySnap = await firestore.collection('cd_keys').doc(key).get();
+    let keySnap = await firestore.collection('cd_keys').doc(keyPrefix).get();
     if (!keySnap.exists) {
-      return res.status(200).json({ result: 'key not found', key });
+      // Screenshot showed a truncated key (input field cuts it off with "...") -
+      // find the real doc by prefix instead of requiring the exact full value.
+      const allKeys = await firestore.collection('cd_keys').limit(2000).get();
+      const match = allKeys.docs.find(d => d.id.toUpperCase().startsWith(keyPrefix));
+      if (!match) {
+        return res.status(200).json({ result: 'key not found (checked exact + prefix match)', keyPrefix });
+      }
+      keySnap = match;
     }
+    const key = keySnap.id;
     const keyData = keySnap.data();
 
     const specsConfigSnap = await firestore.collection('config').doc('managerSpecs').get();
