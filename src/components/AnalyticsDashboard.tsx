@@ -330,7 +330,7 @@ function PayoutColumn({
       <div className="grid grid-cols-2 gap-x-4 gap-y-2">
         <ExpenseLine label={revenueLabel || 'Revenue'} value={fmt(revenue)} />
         <ExpenseLine label="PayPal Fees" value={fmt(paypalFees)} />
-        <ExpenseLine label="Net After PayPal" value={fmt(netAfterPayPal)} />
+        <ExpenseLine label="Net After PayPal/Fees" value={fmt(Math.max(0, netAfterPayPal - fafoAllocation))} />
         <ExpenseLine label="FAFO Operating Budget Funded" value={fmt(fafoAllocation)} />
       </div>
 
