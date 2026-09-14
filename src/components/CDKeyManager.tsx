@@ -130,9 +130,41 @@ export function CDKeyManager({ userId, keys, isAdmin }: CDKeyManagerProps) {
     }
   };
 
+  // Keys where api/manager/verify.ts flagged a different device checking in
+  // while the previous one was still recently active - a possible sign the
+  // key is being shared across two installs at once. Flag-only for now
+  // (see verify.ts) - surfaced here so it doesn't require noticing by
+  // accident, but nothing is auto-blocked.
+  const flaggedKeys = isAdmin ? keys.filter(k => Array.isArray(k.deviceFlags) && k.deviceFlags.length > 0) : [];
+
   return (
     <div className="bg-[#1a1d23] rounded-lg border border-white/5 p-8 shadow-2xl space-y-8">
       <h2 className="text-4xl font-bold text-white tracking-tight">CD Keys</h2>
+
+      {flaggedKeys.length > 0 && (
+        <div className="bg-yellow-500/5 border border-yellow-500/20 rounded-lg p-5 space-y-4">
+          <h3 className="text-sm font-black uppercase tracking-widest text-yellow-500">
+            ⚠ Possible Key Sharing ({flaggedKeys.length} key{flaggedKeys.length === 1 ? '' : 's'})
+          </h3>
+          <div className="space-y-3">
+            {flaggedKeys.map(k => {
+              const latest = k.deviceFlags[k.deviceFlags.length - 1];
+              return (
+                <div key={k.id} className="text-xs text-white/60 space-y-1 border-b border-white/5 pb-3 last:border-0 last:pb-0">
+                  <div className="font-mono text-white/40 break-all">{k.key || k.id}</div>
+                  <div>
+                    Device changed <span className="font-mono text-white/50">{String(latest.previousDeviceId).slice(0, 8)}…</span>
+                    {' -> '}
+                    <span className="font-mono text-white/50">{String(latest.newDeviceId).slice(0, 8)}…</span>
+                    {' '}while the previous device was still active (seen {new Date(latest.previousSeenAt).toLocaleString()})
+                  </div>
+                  <div className="text-white/30">Flagged {new Date(latest.flaggedAt).toLocaleString()}{k.deviceFlags.length > 1 ? ` · ${k.deviceFlags.length} occurrences` : ''}</div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       <div className="space-y-10">
         {keys.length === 0 ? (
