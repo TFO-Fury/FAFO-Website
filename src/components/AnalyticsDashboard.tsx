@@ -322,15 +322,16 @@ function PayoutColumn({
         <span className="text-[9px] font-bold text-white/20">{sublabel}</span>
       </div>
 
-      {/* All of net-after-PayPal is always split 40/40/20 - each owner's
-          40% is a real accrued amount, shown in full regardless of lock
-          state. "Locked" only means FAFO's own 20% hasn't yet covered its
-          flat $80 operating budget - it never reduces what's been earned. */}
+      {/* Tiered split: the first $80 of net-after-PayPal funds FAFO's flat
+          operating budget; $80-$400 splits 50/50 between the owners with no
+          FAFO reserve; above $400, additional revenue splits 40/40/20 and
+          that's where FAFO's reserve/overflow starts accumulating. Payouts
+          are available as soon as the $80 budget is funded. */}
       <div className="grid grid-cols-2 gap-x-4 gap-y-2">
         <ExpenseLine label={revenueLabel || 'Revenue'} value={fmt(revenue)} />
         <ExpenseLine label="PayPal Fees" value={fmt(paypalFees)} />
         <ExpenseLine label="Net After PayPal" value={fmt(netAfterPayPal)} />
-        <ExpenseLine label="FAFO 20% Allocation" value={fmt(fafoAllocation)} />
+        <ExpenseLine label="FAFO Operating Budget Funded" value={fmt(fafoAllocation)} />
       </div>
 
       <div className="pt-3 border-t border-white/5 grid grid-cols-2 gap-3">
