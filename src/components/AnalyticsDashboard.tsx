@@ -17,7 +17,6 @@ interface RevenueData {
 
 const timeFilters = [
   { label: '7 Days', days: 7 },
-  { label: '30 Days', days: 30 },
   { label: 'This Month', days: 0 },
   { label: 'This Year', days: 365 }
 ];
@@ -30,7 +29,7 @@ export default function AnalyticsDashboard({ onSelectUser }: AnalyticsDashboardP
   const [data, setData] = useState<RevenueData | null>(null);
   const [orders, setOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filterIdx, setFilterIdx] = useState(1); // 30 days default
+  const [filterIdx, setFilterIdx] = useState(0); // 7 days default
   const [error, setError] = useState<string | null>(null);
 
   const filter = timeFilters[filterIdx];

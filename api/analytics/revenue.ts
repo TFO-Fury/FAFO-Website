@@ -46,7 +46,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     let totalRevenue = 0;
     let totalOrders = 0;
     let mrr = 0;
+    // Zero-fill every day in the requested range up front - otherwise a day
+    // with zero completed orders never gets a key at all (the loop below
+    // only touches days that had a qualifying order), so the chart silently
+    // renders fewer bars than the selected range instead of a $0 bar for
+    // days with no revenue (e.g. "7 Days" showing only 5 bars).
     const daily: Record<string, number> = {};
+    for (let d = new Date(cutoff); d <= new Date(); d.setDate(d.getDate() + 1)) {
+      daily[startOfDay(d).toISOString().split('T')[0]] = 0;
+    }
     const monthly: Record<string, number> = {};
     const planCounts: Record<string, number> = { aio: 0, single: 0, trial: 0 };
     const activePayers = new Set<string>();
