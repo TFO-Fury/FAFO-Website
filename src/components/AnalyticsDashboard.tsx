@@ -329,7 +329,6 @@ function PayoutColumn({
           are available as soon as the $80 budget is funded. */}
       <div className="grid grid-cols-2 gap-x-4 gap-y-2">
         <ExpenseLine label={revenueLabel || 'Revenue'} value={fmt(revenue)} />
-        <ExpenseLine label="PayPal Fees" value={fmt(paypalFees)} />
         <ExpenseLine label="Net After PayPal/Fees" value={fmt(Math.max(0, netAfterPayPal - fafoAllocation))} />
         <ExpenseLine label="FAFO Operating Budget Funded" value={fmt(fafoAllocation)} />
       </div>
@@ -346,7 +345,7 @@ function PayoutColumn({
       </div>
 
       <div className="grid grid-cols-2 gap-x-4 gap-y-2">
-        <ExpenseLine label="FAFO Taxes/Fees" value={fmt(fafoReserve)} />
+        <ExpenseLine label="PayPal + FAFO Fees" value={fmt(paypalFees + fafoReserve)} />
       </div>
 
       <div className={`text-[10px] font-black uppercase tracking-widest ${unlocked ? 'text-green-500' : 'text-yellow-500/80'}`}>
