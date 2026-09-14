@@ -293,7 +293,7 @@ function PayoutColumn({ label, sublabel, headlineLabel, headlineValue, owner1, o
   label: string; sublabel: string; headlineLabel: string; headlineValue: string;
   owner1: number; owner2: number; fafo: number; accent?: boolean;
 }) {
-  const fmt = (n: number) => `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const fmt = (n: number) => `${n < 0 ? '-' : ''}$${Math.abs(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   return (
     <div className={`rounded-xl p-4 space-y-4 border ${accent ? 'bg-primary/[0.04] border-primary/10' : 'bg-white/[0.015] border-white/[0.04]'}`}>
       <div>
@@ -314,8 +314,8 @@ function PayoutColumn({ label, sublabel, headlineLabel, headlineValue, owner1, o
           <div className="text-sm font-black tabular-nums text-green-500">{fmt(owner2)}</div>
         </div>
         <div>
-          <div className="text-[9px] font-black uppercase tracking-widest text-white/20">FAFO Retained Taxes/Fees</div>
-          <div className="text-sm font-black tabular-nums text-white/60">{fmt(fafo)}</div>
+          <div className="text-[9px] font-black uppercase tracking-widest text-white/20">FAFO Remaining</div>
+          <div className={`text-sm font-black tabular-nums ${fafo < 0 ? 'text-red-500' : 'text-white/60'}`}>{fmt(fafo)}</div>
         </div>
       </div>
     </div>

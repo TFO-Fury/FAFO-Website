@@ -147,12 +147,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       : (thisMonthRevenue > 0 ? null : 0); // null = no prior-month baseline to compare against
 
     // Projected Monthly Payout - projects the current month's pace (revenue
-    // and paid-transaction rate) through the rest of the month, deducts
-    // fixed hosting costs + a per-transaction PayPal fee budget, then splits
-    // what's left 40/40/20 between the two owners and the business account.
-    // "Earned so far" runs the identical expense/split logic against the
-    // actual (non-projected) month-to-date numbers, so the dashboard can
-    // show both "if we stopped selling today" and "at the current pace."
+    // and paid-transaction rate) through the rest of the month.
+    //
+    // Payout order of operations (corrected - operating costs must NEVER
+    // reduce either owner's 40%): PayPal fees are the only deduction taken
+    // out of gross revenue before the 40/40/20 split, since that money is
+    // never actually available to distribute in the first place. GitHub/
+    // Vercel/Hostinger come ONLY out of FAFO's 20% share afterward - that
+    // 20% exists specifically to cover operating costs (and build a reserve
+    // with whatever's left), not to be pre-deducted from the top. So
+    // FAFO's remaining balance can go negative (a real shortfall against
+    // its own expense budget) without ever touching what either owner is
+    // paid. "Earned so far" runs the identical order of operations against
+    // the actual (non-projected) month-to-date numbers.
     const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
     const daysElapsed = now.getDate();
 
@@ -163,14 +170,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const projectedGrossRevenue = (thisMonthRevenue / daysElapsed) * daysInMonth;
     const projectedTransactions = Math.round((thisMonthPaidTransactions / daysElapsed) * daysInMonth);
     const projectedPayPalFees = projectedTransactions * PAYPAL_FEE_PER_TRANSACTION;
-    const projectedExpenses = fixedExpensesTotal + projectedPayPalFees;
-    const projectedNetProfit = projectedGrossRevenue - projectedExpenses;
-    const projectedNetForSplit = Math.max(0, projectedNetProfit);
+    const projectedNetAfterPayPal = projectedGrossRevenue - projectedPayPalFees;
+    // Floor only guards the pathological case where PayPal fees alone exceed
+    // revenue - not related to FAFO's operating-expense shortfall below.
+    const projectedNetForSplit = Math.max(0, projectedNetAfterPayPal);
+    const projectedFafoAllocation = projectedNetForSplit * 0.2;
+    const projectedFafoRemaining = projectedFafoAllocation - fixedExpensesTotal; // may be negative
 
     const earnedPayPalFees = thisMonthPaidTransactions * PAYPAL_FEE_PER_TRANSACTION;
-    const earnedExpenses = fixedExpensesTotal + earnedPayPalFees;
-    const earnedNetProfit = thisMonthRevenue - earnedExpenses;
-    const earnedNetForSplit = Math.max(0, earnedNetProfit);
+    const earnedNetAfterPayPal = thisMonthRevenue - earnedPayPalFees;
+    const earnedNetForSplit = Math.max(0, earnedNetAfterPayPal);
+    const earnedFafoAllocation = earnedNetForSplit * 0.2;
+    const earnedFafoRemaining = earnedFafoAllocation - fixedExpensesTotal; // may be negative
 
     const round2 = (n: number) => parseFloat(n.toFixed(2));
     const projectedPayout = {
@@ -185,19 +196,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         vercel: FIXED_EXPENSES.vercel,
         hostinger: FIXED_EXPENSES.hostinger,
         paypalFees: round2(projectedPayPalFees),
-        total: round2(projectedExpenses)
+        total: round2(fixedExpensesTotal + projectedPayPalFees)
       },
-      projectedNetProfit: round2(projectedNetProfit),
+      projectedNetProfit: round2(projectedNetAfterPayPal),
       owner1Payout: round2(projectedNetForSplit * 0.4),
       owner2Payout: round2(projectedNetForSplit * 0.4),
-      fafoRetained: round2(projectedNetForSplit * 0.2),
+      fafoRetained: round2(projectedFafoRemaining),
       earned: {
         paypalFees: round2(earnedPayPalFees),
-        expenses: round2(earnedExpenses),
-        netProfit: round2(earnedNetProfit),
+        expenses: round2(fixedExpensesTotal + earnedPayPalFees),
+        netProfit: round2(earnedNetAfterPayPal),
         owner1Payout: round2(earnedNetForSplit * 0.4),
         owner2Payout: round2(earnedNetForSplit * 0.4),
-        fafoRetained: round2(earnedNetForSplit * 0.2)
+        fafoRetained: round2(earnedFafoRemaining)
       }
     };
 
