@@ -165,7 +165,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const PAYPAL_FEE_PER_TRANSACTION = 2.25;
     const FIXED_EXPENSES = { github: 40, vercel: 20, hostinger: 18.99 };
-    const fixedExpensesTotal = FIXED_EXPENSES.github + FIXED_EXPENSES.vercel + FIXED_EXPENSES.hostinger;
+    const fixedExpensesTotal = FIXED_EXPENSES.github + FIXED_EXPENSES.vercel + FIXED_EXPENSES.hostinger; // 78.99, display-only
+    // Payout-unlock threshold is a flat, rounded-up $80 - deliberately NOT
+    // the same as the $78.99 real cost total above. Owner payouts stay
+    // locked at $0 until FAFO's own 20% allocation reaches this amount;
+    // once it does, each owner's full accrued 40% becomes available, and
+    // anything FAFO's 20% holds beyond $80 just stays in FAFO as reserve.
+    const MONTHLY_OPERATING_EXPENSE_REQUIREMENT = 80.00;
 
     const projectedGrossRevenue = (thisMonthRevenue / daysElapsed) * daysInMonth;
     const projectedTransactions = Math.round((thisMonthPaidTransactions / daysElapsed) * daysInMonth);
@@ -175,13 +181,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // revenue - not related to FAFO's operating-expense shortfall below.
     const projectedNetForSplit = Math.max(0, projectedNetAfterPayPal);
     const projectedFafoAllocation = projectedNetForSplit * 0.2;
-    const projectedFafoRemaining = projectedFafoAllocation - fixedExpensesTotal; // may be negative
+    const projectedPayoutsUnlocked = projectedFafoAllocation >= MONTHLY_OPERATING_EXPENSE_REQUIREMENT;
+    const projectedFafoRemaining = projectedFafoAllocation - MONTHLY_OPERATING_EXPENSE_REQUIREMENT; // may be negative
 
     const earnedPayPalFees = thisMonthPaidTransactions * PAYPAL_FEE_PER_TRANSACTION;
     const earnedNetAfterPayPal = thisMonthRevenue - earnedPayPalFees;
     const earnedNetForSplit = Math.max(0, earnedNetAfterPayPal);
     const earnedFafoAllocation = earnedNetForSplit * 0.2;
-    const earnedFafoRemaining = earnedFafoAllocation - fixedExpensesTotal; // may be negative
+    const earnedPayoutsUnlocked = earnedFafoAllocation >= MONTHLY_OPERATING_EXPENSE_REQUIREMENT;
+    const earnedFafoRemaining = earnedFafoAllocation - MONTHLY_OPERATING_EXPENSE_REQUIREMENT; // may be negative
 
     const round2 = (n: number) => parseFloat(n.toFixed(2));
     const projectedPayout = {
@@ -199,15 +207,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         total: round2(fixedExpensesTotal + projectedPayPalFees)
       },
       projectedNetProfit: round2(projectedNetAfterPayPal),
-      owner1Payout: round2(projectedNetForSplit * 0.4),
-      owner2Payout: round2(projectedNetForSplit * 0.4),
+      payoutsUnlocked: projectedPayoutsUnlocked,
+      owner1Payout: round2(projectedPayoutsUnlocked ? projectedNetForSplit * 0.4 : 0),
+      owner2Payout: round2(projectedPayoutsUnlocked ? projectedNetForSplit * 0.4 : 0),
       fafoRetained: round2(projectedFafoRemaining),
       earned: {
         paypalFees: round2(earnedPayPalFees),
         expenses: round2(fixedExpensesTotal + earnedPayPalFees),
         netProfit: round2(earnedNetAfterPayPal),
-        owner1Payout: round2(earnedNetForSplit * 0.4),
-        owner2Payout: round2(earnedNetForSplit * 0.4),
+        payoutsUnlocked: earnedPayoutsUnlocked,
+        owner1Payout: round2(earnedPayoutsUnlocked ? earnedNetForSplit * 0.4 : 0),
+        owner2Payout: round2(earnedPayoutsUnlocked ? earnedNetForSplit * 0.4 : 0),
         fafoRetained: round2(earnedFafoRemaining)
       }
     };

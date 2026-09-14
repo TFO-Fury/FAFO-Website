@@ -17,10 +17,11 @@ interface RevenueData {
     projectedTransactions: number;
     expenses: { github: number; vercel: number; hostinger: number; paypalFees: number; total: number };
     projectedNetProfit: number;
+    payoutsUnlocked: boolean;
     owner1Payout: number;
     owner2Payout: number;
     fafoRetained: number;
-    earned: { paypalFees: number; expenses: number; netProfit: number; owner1Payout: number; owner2Payout: number; fafoRetained: number };
+    earned: { paypalFees: number; expenses: number; netProfit: number; payoutsUnlocked: boolean; owner1Payout: number; owner2Payout: number; fafoRetained: number };
   } | null;
   activeSubscribers: number;
   aioSubscribers: number;
@@ -168,6 +169,7 @@ export default function AnalyticsDashboard({ onSelectUser }: AnalyticsDashboardP
               owner1={data.projectedPayout.earned.owner1Payout}
               owner2={data.projectedPayout.earned.owner2Payout}
               fafo={data.projectedPayout.earned.fafoRetained}
+              unlocked={data.projectedPayout.earned.payoutsUnlocked}
             />
             <PayoutColumn
               label="Projected Month End"
@@ -177,6 +179,7 @@ export default function AnalyticsDashboard({ onSelectUser }: AnalyticsDashboardP
               owner1={data.projectedPayout.owner1Payout}
               owner2={data.projectedPayout.owner2Payout}
               fafo={data.projectedPayout.fafoRetained}
+              unlocked={data.projectedPayout.payoutsUnlocked}
               accent
             />
           </div>
@@ -289,9 +292,9 @@ export default function AnalyticsDashboard({ onSelectUser }: AnalyticsDashboardP
   );
 }
 
-function PayoutColumn({ label, sublabel, headlineLabel, headlineValue, owner1, owner2, fafo, accent }: {
+function PayoutColumn({ label, sublabel, headlineLabel, headlineValue, owner1, owner2, fafo, unlocked, accent }: {
   label: string; sublabel: string; headlineLabel: string; headlineValue: string;
-  owner1: number; owner2: number; fafo: number; accent?: boolean;
+  owner1: number; owner2: number; fafo: number; unlocked: boolean; accent?: boolean;
 }) {
   const fmt = (n: number) => `${n < 0 ? '-' : ''}$${Math.abs(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   return (
@@ -307,17 +310,22 @@ function PayoutColumn({ label, sublabel, headlineLabel, headlineValue, owner1, o
       <div className="grid grid-cols-3 gap-2">
         <div>
           <div className="text-[9px] font-black uppercase tracking-widest text-white/20">Owner 1</div>
-          <div className="text-sm font-black tabular-nums text-green-500">{fmt(owner1)}</div>
+          <div className={`text-sm font-black tabular-nums ${unlocked ? 'text-green-500' : 'text-white/30'}`}>{fmt(owner1)}</div>
         </div>
         <div>
           <div className="text-[9px] font-black uppercase tracking-widest text-white/20">Owner 2</div>
-          <div className="text-sm font-black tabular-nums text-green-500">{fmt(owner2)}</div>
+          <div className={`text-sm font-black tabular-nums ${unlocked ? 'text-green-500' : 'text-white/30'}`}>{fmt(owner2)}</div>
         </div>
         <div>
           <div className="text-[9px] font-black uppercase tracking-widest text-white/20">FAFO Remaining</div>
           <div className={`text-sm font-black tabular-nums ${fafo < 0 ? 'text-red-500' : 'text-white/60'}`}>{fmt(fafo)}</div>
         </div>
       </div>
+      {!unlocked && (
+        <div className="text-[9px] font-bold text-yellow-500/70">
+          Payouts locked until FAFO's share covers the $80 operating budget
+        </div>
+      )}
     </div>
   );
 }
