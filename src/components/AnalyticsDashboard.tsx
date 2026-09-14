@@ -314,7 +314,7 @@ function PayoutColumn({ label, sublabel, headlineLabel, headlineValue, owner1, o
           <div className="text-sm font-black tabular-nums text-green-500">{fmt(owner2)}</div>
         </div>
         <div>
-          <div className="text-[9px] font-black uppercase tracking-widest text-white/20">FAFO Retained</div>
+          <div className="text-[9px] font-black uppercase tracking-widest text-white/20">FAFO Retained Taxes/Fees</div>
           <div className="text-sm font-black tabular-nums text-white/60">{fmt(fafo)}</div>
         </div>
       </div>
