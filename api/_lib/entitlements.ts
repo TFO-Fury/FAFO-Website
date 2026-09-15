@@ -1,4 +1,7 @@
 import { Timestamp, FieldValue } from './firebase-admin.js';
+import { timestampToDate } from './wow-classes.js';
+
+export { timestampToDate };
 
 export interface ClassEntitlement {
   expires: any; // Timestamp or Date
@@ -10,14 +13,6 @@ export interface NormalizedEntitlements {
   aioExpires: any;
   plan: string;
   migrated: boolean;
-}
-
-export function timestampToDate(ts: any): Date | null {
-  if (!ts) return null;
-  if (ts.toDate && typeof ts.toDate === 'function') return ts.toDate();
-  if (ts instanceof Date) return ts;
-  const d = new Date(ts);
-  return isNaN(d.getTime()) ? null : d;
 }
 
 /**
