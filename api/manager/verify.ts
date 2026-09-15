@@ -70,55 +70,13 @@ function isRateLimited(id: string): boolean {
   return recent.length > RATE_LIMIT_MAX_REQUESTS;
 }
 
-// Matches the reader's RECHECK_SECONDS cadence (fafo/license.py) - two
-// different devices legitimately checking in more than a day apart is just
-// a device switch (reinstall, new PC), not simultaneous sharing.
-const RECENT_DEVICE_WINDOW_MS = 24 * 60 * 60 * 1000;
-const MAX_DEVICE_FLAGS_KEPT = 20;
-
-// Flag-only, no blocking yet (2026-09 decision: a customer's second PC or a
-// reinstall shouldn't get wrongly locked out until we've seen real data and
-// are comfortable with the false-positive rate). Records the most recent
-// device per key and, when a DIFFERENT device shows up while the previous
-// one was seen within the last ~24h, appends a review entry to
-// cd_keys/{key}.deviceFlags so key-sharing surfaces in the admin CD Keys
-// tab instead of only being noticed by accident. Fire-and-forget: must
-// never slow down or fail the actual license response.
-async function trackDevice(
-  keyRef: FirebaseFirestore.DocumentReference,
-  keyData: any,
-  device: unknown
-): Promise<void> {
-  if (!device || typeof device !== 'string') return; // older client build, hasn't updated to send it yet
-
-  const lastDeviceId: string | undefined = keyData?.lastDeviceId;
-  const lastSeen = timestampToDate(keyData?.lastDeviceSeenAt);
-  const now = new Date();
-
-  const update: Record<string, any> = {
-    lastDeviceId: device,
-    lastDeviceSeenAt: FieldValue.serverTimestamp()
-  };
-
-  if (lastDeviceId && lastDeviceId !== device && lastSeen && (now.getTime() - lastSeen.getTime()) < RECENT_DEVICE_WINDOW_MS) {
-    console.warn(`[ManagerVerify] Possible key sharing: key=${keyRef.id} device changed ${lastDeviceId} -> ${device} within ${RECENT_DEVICE_WINDOW_MS / 3600000}h`);
-    const existingFlags: any[] = Array.isArray(keyData?.deviceFlags) ? keyData.deviceFlags : [];
-    update.deviceFlags = [
-      ...existingFlags,
-      { previousDeviceId: lastDeviceId, newDeviceId: device, previousSeenAt: lastSeen.toISOString(), flaggedAt: now.toISOString() }
-    ].slice(-MAX_DEVICE_FLAGS_KEPT);
-  }
-
-  await keyRef.set(update, { merge: true });
-}
-
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
     return res.status(405).json({ valid: false, error: 'Method not allowed' });
   }
 
   const body = await readJsonBody(req);
-  const { key, spec, device } = body || {};
+  const { key, spec } = body || {};
 
   if (!key || typeof key !== 'string' || !spec || typeof spec !== 'string') {
     return res.status(400).json({ valid: false, error: 'key and spec required' });
@@ -172,13 +130,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     if (isAioActive(normalized)) {
       const expires = timestampToDate(normalized.aioExpires);
-      trackDevice(keySnap.ref, keyData, device).catch(err => console.error('[ManagerVerify] Failed to track device:', err));
       return res.status(200).json({ valid: true, expires: expires!.toISOString() });
     }
 
     if (getActiveClasses(normalized).includes(wantClass)) {
       const expires = timestampToDate(normalized.classEntitlements[wantClass].expires);
-      trackDevice(keySnap.ref, keyData, device).catch(err => console.error('[ManagerVerify] Failed to track device:', err));
       return res.status(200).json({ valid: true, expires: expires!.toISOString() });
     }
 
