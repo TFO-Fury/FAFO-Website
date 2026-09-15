@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit",
-    "start": "tsx server.ts"
+    "start": "tsx server.ts",
+    "test": "tsx --test api/_lib/wow-classes.test.ts"
   },
   "dependencies": {
     "@google/genai": "^1.29.0",

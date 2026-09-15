@@ -164,9 +164,13 @@ export function CheckoutModal({ isOpen, onClose, user, userData, cart, total, is
 
       // 4. Trigger GitHub license sync
       try {
+        const syncToken = await user.getIdToken();
         const syncRes = await fetch('/api/sync-license', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${syncToken}`
+          },
           body: JSON.stringify({ userId: user.uid })
         });
         const syncData = await syncRes.json().catch(() => ({}));

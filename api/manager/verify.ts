@@ -1,7 +1,8 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { readJsonBody } from '../_lib/body.js';
 import { getDb, FieldValue } from '../_lib/firebase-admin.js';
-import { normalizeEntitlements, isAioActive, getActiveClasses, timestampToDate } from '../_lib/entitlements.js';
+import { normalizeEntitlements, isAioActive, timestampToDate } from '../_lib/entitlements.js';
+import { classForSpec, activeClassExpiryForSpec } from '../_lib/wow-classes.js';
 
 // FAFO Manager reader "call home" check — the reader is a local, unsandboxed Python process
 // (unlike the in-game Lua sandbox), so it can't trust a locally-editable license file. It POSTs
@@ -10,49 +11,6 @@ import { normalizeEntitlements, isAioActive, getActiveClasses, timestampToDate }
 //
 // Response is deliberately minimal: never echo back anything beyond this one spec's validity, so
 // the endpoint can't be used to enumerate everything a key is entitled to.
-
-// tools/specs.json's assetClass, lowercased, is the class key normalizeEntitlements() keys on.
-const SPEC_TO_CLASS: Record<string, string> = {
-  'Hunter-BeastMastery': 'hunter',
-  'Hunter-Survival': 'hunter',
-  'Hunter-Marksmanship': 'hunter',
-  'DeathKnight-Unholy': 'deathknight',
-  'DeathKnight-Frost': 'deathknight',
-  'DeathKnight-Blood': 'deathknight',
-  'Monk-Mistweaver': 'monk',
-  'Monk-Windwalker': 'monk',
-  'Monk-Brewmaster': 'monk',
-  'Paladin-Holy': 'paladin',
-  'Paladin-Retribution': 'paladin',
-  'Paladin-Protection': 'paladin',
-  'Priest-Discipline': 'priest',
-  'Priest-Holy': 'priest',
-  'Priest-Shadow': 'priest',
-  'Warrior-Arms': 'warrior',
-  'Warrior-Fury': 'warrior',
-  'Warrior-Protection': 'warrior',
-  'Warlock-Destruction': 'warlock',
-  'Warlock-Affliction': 'warlock',
-  'Warlock-Demonology': 'warlock',
-  'DemonHunter-Havoc': 'demonhunter',
-  'DemonHunter-Vengeance': 'demonhunter',
-  'Evoker-Preservation': 'evoker',
-  'Evoker-Devastation': 'evoker',
-  'Evoker-Augmentation': 'evoker',
-  'Shaman-Enhancement': 'shaman',
-  'Shaman-Elemental': 'shaman',
-  'Shaman-Restoration': 'shaman',
-  'Druid-Guardian': 'druid',
-  'Druid-Restoration': 'druid',
-  'Druid-Feral': 'druid',
-  'Druid-Balance': 'druid',
-  'Mage-Fire': 'mage',
-  'Mage-Arcane': 'mage',
-  'Mage-Frost': 'mage',
-  'Rogue-Assassination': 'rogue',
-  'Rogue-Outlaw': 'rogue',
-  'Rogue-Subtlety': 'rogue',
-};
 
 // Simple in-memory rate limiter (per-function-instance, best-effort for serverless) — same shape
 // as api/sync-license.ts, keyed by license key rather than IP since this is an unauthenticated,
@@ -87,7 +45,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(429).json({ valid: false, error: 'Too many requests' });
   }
 
-  const wantClass = SPEC_TO_CLASS[spec];
+  const wantClass = classForSpec(spec);
   if (!wantClass) {
     return res.status(400).json({ valid: false, error: `Unknown spec '${spec}'` });
   }
@@ -133,9 +91,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json({ valid: true, expires: expires!.toISOString() });
     }
 
-    if (getActiveClasses(normalized).includes(wantClass)) {
-      const expires = timestampToDate(normalized.classEntitlements[wantClass].expires);
-      return res.status(200).json({ valid: true, expires: expires!.toISOString() });
+    const classExpires = activeClassExpiryForSpec(normalized.classEntitlements, spec);
+    if (classExpires) {
+      return res.status(200).json({ valid: true, expires: classExpires.toISOString() });
     }
 
     return res.status(200).json({ valid: false });

@@ -8,7 +8,8 @@ import { getFirestore, FieldValue, Timestamp } from 'firebase-admin/firestore';
 import type { Firestore } from 'firebase-admin/firestore';
 import { nanoid } from 'nanoid';
 import { Octokit } from 'octokit';
-import { triggerLicenseSync, removeKeyFromGithub } from './api/_lib/github.js';
+import { triggerLicenseSync } from './api/_lib/github.js';
+import keyDeactivateHandler from './api/keys/deactivate.js';
 
 // Load config using readFileSync for better reliability in production
 const firebaseConfig = JSON.parse(
@@ -423,35 +424,7 @@ async function startServer() {
     }
   });
 
-  apiRouter.post("/keys/deactivate", async (req, res) => {
-    const { keyId } = req.body;
-    try {
-      const firestore = await getDb();
-      const keyDoc = await firestore.collection('cd_keys').doc(keyId).get();
-      const previousUserId = keyDoc.exists ? keyDoc.data()?.userId : null;
-
-      await firestore.collection('cd_keys').doc(keyId).update({
-        status: 'inactive',
-        updatedAt: FieldValue.serverTimestamp()
-      });
-
-      removeKeyFromGithub(keyId).then(result => {
-        console.log(`[GitHubSync] Deactivation trigger result:`, result);
-      }).catch(err => console.error('[GitHubSync] Deactivation trigger error:', err));
-
-      // Re-sync remaining entitlements for the user whose key was deactivated
-      if (previousUserId) {
-        triggerLicenseSync(previousUserId, 'legacy-deactivation').then(result => {
-          console.log(`[LicenseSync] Post-deactivation sync result:`, result);
-        }).catch(err => console.error('[LicenseSync] Post-deactivation sync error:', err));
-      }
-
-      res.json({ success: true });
-    } catch (err: any) {
-      console.error("[Deactivation Error]", err);
-      res.status(500).json({ error: "Server error during deactivation: " + err.message });
-    }
-  });
+  apiRouter.post("/keys/deactivate", (req, res) => keyDeactivateHandler(req as any, res as any));
 
   // Mount API Router
   app.use("/api", apiRouter);
