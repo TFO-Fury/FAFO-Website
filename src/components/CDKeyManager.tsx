@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { db, handleFirestoreError, OperationType } from '../lib/firebase';
+import { auth, db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { 
   updateDoc, 
   deleteDoc, 
@@ -74,9 +74,14 @@ export function CDKeyManager({ userId, keys, isAdmin }: CDKeyManagerProps) {
     try {
       const url = '/api/keys/deactivate';
       console.log("Calling API:", url);
+      const token = await auth.currentUser?.getIdToken(true);
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
       const res = await fetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({ keyId })
       });
       
@@ -102,17 +107,26 @@ export function CDKeyManager({ userId, keys, isAdmin }: CDKeyManagerProps) {
       await deleteDoc(doc(db, 'cd_keys', keyId));
       console.log(`[CDKeyManager] Successfully removed: ${keyId}`);
       setConfirmDeleteId(null);
-      // Trigger license sync after key removal
-      fetch('/api/sync-license', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId })
-      }).then(async r => {
-        const data = await r.json().catch(() => ({}));
-        console.log('[CDKeyManager] License sync after removal:', data);
-      }).catch(err => {
-        console.error('[CDKeyManager] License sync after removal failed:', err);
-      });
+      // Trigger license sync after key removal (for the key's actual owner, not the viewing admin)
+      const ownerId = keys.find(k => k.id === keyId)?.userId;
+      if (ownerId) {
+        (async () => {
+          const token = await auth.currentUser?.getIdToken();
+          return fetch('/api/sync-license', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({ userId: ownerId })
+          });
+        })().then(async r => {
+          const data = await r.json().catch(() => ({}));
+          console.log('[CDKeyManager] License sync after removal:', data);
+        }).catch(err => {
+          console.error('[CDKeyManager] License sync after removal failed:', err);
+        });
+      }
     } catch (err: any) {
       console.error(`[CDKeyManager] Remove failed:`, err);
       try {
