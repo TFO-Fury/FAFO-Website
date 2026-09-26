@@ -39,7 +39,9 @@ interface PayoutData {
 }
 
 const fmt = (n: number) => `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-const fmtDay = (iso: string) => new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+// Period boundaries are midnight UTC on the 21st (matching the server's day buckets), so format
+// them in UTC - in a US timezone a local format would show the 20th.
+const fmtDay = (iso: string) => new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', timeZone: 'UTC' });
 
 export default function OwnerPayout() {
   const [cycle, setCycle] = useState<Cycle>('cycle21');
@@ -69,10 +71,6 @@ export default function OwnerPayout() {
     load();
     return () => { cancelled = true; };
   }, [cycle]);
-
-  // The period ends at the start of the next cycle, so the last day it
-  // actually covers is the day before periodEnd.
-  const lastDayISO = data ? new Date(new Date(data.periodEnd).getTime() - 86400000).toISOString() : '';
 
   return (
     <div className="p-6 space-y-6 max-w-6xl mx-auto">
@@ -105,7 +103,7 @@ export default function OwnerPayout() {
         <div className={`space-y-6 transition-opacity ${loading ? 'opacity-50' : ''}`}>
         <div className="bg-white/[0.02] border border-white/[0.04] rounded-2xl p-5 space-y-5">
           <h3 className="text-xs font-black uppercase tracking-widest text-white/40">
-            {fmtDay(data.periodStart)} – {fmtDay(lastDayISO)}
+            {fmtDay(data.periodStart)} – {fmtDay(data.periodEnd)}
           </h3>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
