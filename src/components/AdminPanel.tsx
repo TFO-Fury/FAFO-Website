@@ -27,10 +27,12 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import AnalyticsDashboard from './AnalyticsDashboard';
+import OwnerPayout from './OwnerPayout';
 import { CDKeyManager } from './CDKeyManager';
 
 interface AdminPanelProps {
   onViewUser: (userId: string) => void;
+  isOwner?: boolean;
 }
 
 const TABS = [
@@ -42,6 +44,10 @@ const TABS = [
   { id: 'cdkeys', label: 'CD Keys', icon: <Ticket className="w-3.5 h-3.5" /> },
   { id: 'specs', label: 'Specs', icon: <Wrench className="w-3.5 h-3.5" /> }
 ];
+
+// Owner-only tab - appended in render only when isOwner, so it is not in the
+// list (or the DOM) at all for any other admin.
+const OWNER_TAB = { id: 'payout', label: 'My Payout', icon: <DollarSign className="w-3.5 h-3.5" /> };
 
 // Mirrors the manager's rotations/ folder (rotation-file-per-spec = what
 // actually shows up in the Spec/rotation dropdown), grouped by class for
@@ -96,7 +102,7 @@ function StatCard({ icon, label, value, accent }: { icon: ReactNode; label: stri
   );
 }
 
-export function AdminPanel({ onViewUser }: AdminPanelProps) {
+export function AdminPanel({ onViewUser, isOwner = false }: AdminPanelProps) {
   const [users, setUsers] = useState<any[]>([]);
   const [allKeys, setAllKeys] = useState<any[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
@@ -397,7 +403,7 @@ export function AdminPanel({ onViewUser }: AdminPanelProps) {
             <span className="text-xs font-black uppercase tracking-[0.2em] text-white/80">Admin Core</span>
           </div>
           <div className="flex items-center gap-1">
-            {TABS.map(tab => (
+            {(isOwner ? [...TABS, OWNER_TAB] : TABS).map(tab => (
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
@@ -436,9 +442,11 @@ export function AdminPanel({ onViewUser }: AdminPanelProps) {
           </button>
         </div>
 
-        {activeTab !== 'users' && activeTab !== 'cdkeys' && activeTab !== 'specs' && (
+        {activeTab !== 'users' && activeTab !== 'cdkeys' && activeTab !== 'specs' && activeTab !== 'payout' && (
           <AnalyticsDashboard onSelectUser={(email) => { setSearchTerm(email); setActiveTab('users'); }} />
         )}
+
+        {isOwner && activeTab === 'payout' && <OwnerPayout />}
 
         {activeTab === 'cdkeys' && (
           <CDKeyManager userId={auth.currentUser?.uid || ''} keys={allKeys} isAdmin={true} />

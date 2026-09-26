@@ -598,7 +598,7 @@ export default function App() {
                   onUpgrade={() => alert("Upgrading other users via cart is not supported. Use admin controls instead.")}
                 />
               ) : view === 'admin' ? (
-                <AdminPanel onViewUser={(userId) => {
+                <AdminPanel isOwner={isOwner(userData)} onViewUser={(userId) => {
                   navigateTo('view-user', userId);
                 }} />
               ) : null}

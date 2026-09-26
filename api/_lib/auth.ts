@@ -36,3 +36,23 @@ export async function requireAdmin(req: VercelRequest, res: VercelResponse) {
     return null;
   }
 }
+
+// Owner-only (not admin). Answers 404 rather than 403 to a non-owner so an
+// admin poking at the URL can't even tell the endpoint exists.
+export async function requireOwner(req: VercelRequest, res: VercelResponse) {
+  try {
+    const decoded = await verifyIdToken(req);
+    const firestore = await getDb();
+    const callerDoc = await firestore.collection('users').doc(decoded.uid).get();
+    const callerData = callerDoc.exists ? callerDoc.data() : null;
+    if (callerData?.role !== 'owner') {
+      res.status(404).json({ error: 'Not found' });
+      return null;
+    }
+    return { uid: decoded.uid, email: decoded.email || callerData?.email, role: 'owner' as const, data: callerData };
+  } catch (err: any) {
+    console.error('[Auth] requireOwner error:', err);
+    res.status(404).json({ error: 'Not found' });
+    return null;
+  }
+}

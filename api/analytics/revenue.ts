@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { getDb } from '../_lib/firebase-admin.js';
 import { requireAdmin } from '../_lib/auth.js';
+import { countedAmount } from '../_lib/payout.js';
 
 function startOfDay(d: Date): Date {
   const r = new Date(d);
@@ -19,31 +20,6 @@ function startOfPrevMonth(d: Date): Date {
   const r = startOfMonth(d);
   r.setMonth(r.getMonth() - 1);
   return r;
-}
-
-// Same qualifying-order filter used by the main revenue loop below, factored
-// out so the independent this-month-vs-last-month comparison (which always
-// covers a fixed 2-month window, regardless of whichever date-range tab is
-// selected) applies identical rules instead of drifting out of sync.
-function countedAmount(d: any, logPrefix: string, docId: string): number | null {
-  const currency = (d.currency || 'USD').toUpperCase();
-  if (d.excludedFromRevenue) {
-    console.log(`[${logPrefix}] Ignored excluded order ${docId}: source=${d.source || 'unknown'}, amount=${d.amount}, currency=${currency}`);
-    return null;
-  }
-  if (d.paymentStatus !== 'completed') {
-    console.log(`[${logPrefix}] Ignored incomplete order ${docId}: status=${d.paymentStatus}, amount=${d.amount}`);
-    return null;
-  }
-  if (!d.amount) {
-    console.log(`[${logPrefix}] Ignored zero-amount order ${docId}`);
-    return null;
-  }
-  if (currency !== 'USD') {
-    console.log(`[${logPrefix}] Ignored non-USD order ${docId}: amount=${d.amount}, currency=${currency}`);
-    return null;
-  }
-  return parseFloat(d.amount) || 0;
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -146,116 +122,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       ? ((thisMonthRevenue - lastMonthRevenue) / lastMonthRevenue) * 100
       : (thisMonthRevenue > 0 ? null : 0); // null = no prior-month baseline to compare against
 
-    // Projected Monthly Payout - projects the current month's pace (revenue
-    // and paid-transaction rate) through the rest of the month.
-    //
-    // Payout order of operations (corrected - operating costs must NEVER
-    // reduce either owner's 40%): PayPal fees are the only deduction taken
-    // out of gross revenue before the 40/40/20 split, since that money is
-    // never actually available to distribute in the first place. GitHub/
-    // Vercel/Hostinger come ONLY out of FAFO's 20% share afterward - that
-    // 20% exists specifically to cover operating costs (and build a reserve
-    // with whatever's left), not to be pre-deducted from the top. So
-    // FAFO's remaining balance can go negative (a real shortfall against
-    // its own expense budget) without ever touching what either owner is
-    // paid. "Earned so far" runs the identical order of operations against
-    // the actual (non-projected) month-to-date numbers.
-    const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-    const daysElapsed = now.getDate();
-
-    const PAYPAL_FEE_PER_TRANSACTION = 2.25;
-    const FIXED_EXPENSES = { github: 40, vercel: 20, hostinger: 18.99 };
-    const fixedExpensesTotal = FIXED_EXPENSES.github + FIXED_EXPENSES.vercel + FIXED_EXPENSES.hostinger; // 78.99, display-only
-    // Three-tier payout structure:
-    //   Tier 1 ($0-$80 net):   the entire amount funds FAFO's flat operating
-    //                          budget first. Owners get $0 - there's nothing
-    //                          left over yet, not a "reserve" decision.
-    //   Tier 2 ($80-$400 net): the $80 operating budget is already fully
-    //                          funded, so everything above it splits 50/50
-    //                          between the two owners. No FAFO reserve
-    //                          accrues in this tier at all.
-    //   Tier 3 (>$400 net):    at net=$400 each owner has exactly $160
-    //                          (half of the $320 above the $80 budget).
-    //                          Only revenue ABOVE $400 then splits 40/40/20,
-    //                          which is where FAFO's reserve/overflow
-    //                          finally starts accumulating.
-    // Payouts are AVAILABLE as soon as the $80 operating budget is funded
-    // (tier 2+) - unlike an earlier version of this logic, availability
-    // does NOT wait on FAFO accumulating a 20% share.
-    const MONTHLY_OPERATING_BUDGET = 80.00;
-    const TIER_2_CEILING = 400.00; // net-after-PayPal at which each owner has exactly $160
-    const round2 = (n: number) => parseFloat(n.toFixed(2));
-
-    function splitPayout(netAfterPayPal: number) {
-      const net = Math.max(0, netAfterPayPal); // guards only the pathological case where fees exceed revenue
-      let owner1: number, owner2: number, fafoOperatingBudgetFunded: number, fafoReserve: number, unlocked: boolean;
-
-      if (net <= MONTHLY_OPERATING_BUDGET) {
-        owner1 = 0;
-        owner2 = 0;
-        fafoOperatingBudgetFunded = net;
-        fafoReserve = 0;
-        unlocked = false;
-      } else if (net <= TIER_2_CEILING) {
-        const amountAfterOperatingBudget = net - MONTHLY_OPERATING_BUDGET;
-        owner1 = round2(amountAfterOperatingBudget / 2);
-        owner2 = round2(amountAfterOperatingBudget - owner1); // owner2 absorbs the odd cent so the total is always exact
-        fafoOperatingBudgetFunded = MONTHLY_OPERATING_BUDGET;
-        fafoReserve = 0;
-        unlocked = true;
-      } else {
-        const excessRevenue = net - TIER_2_CEILING;
-        owner1 = round2(160 + excessRevenue * 0.4);
-        owner2 = round2(160 + excessRevenue * 0.4);
-        fafoOperatingBudgetFunded = MONTHLY_OPERATING_BUDGET;
-        fafoReserve = round2(excessRevenue * 0.2);
-        unlocked = true;
-      }
-
-      return {
-        payoutsUnlocked: unlocked,
-        owner1Payout: owner1,
-        owner2Payout: owner2,
-        fafoAllocation: round2(fafoOperatingBudgetFunded), // "FAFO Operating Budget Funded" - kept field name for frontend compat
-        fafoReserve,
-        amountNeededToUnlock: round2(Math.max(0, MONTHLY_OPERATING_BUDGET - net))
-      };
-    }
-
-    const projectedGrossRevenue = (thisMonthRevenue / daysElapsed) * daysInMonth;
-    const projectedTransactions = Math.round((thisMonthPaidTransactions / daysElapsed) * daysInMonth);
-    const projectedPayPalFees = projectedTransactions * PAYPAL_FEE_PER_TRANSACTION;
-    const projectedNetAfterPayPal = projectedGrossRevenue - projectedPayPalFees;
-    const projectedSplit = splitPayout(projectedNetAfterPayPal);
-
-    const earnedPayPalFees = thisMonthPaidTransactions * PAYPAL_FEE_PER_TRANSACTION;
-    const earnedNetAfterPayPal = thisMonthRevenue - earnedPayPalFees;
-    const earnedSplit = splitPayout(earnedNetAfterPayPal);
-
-    const projectedPayout = {
-      daysElapsed,
-      daysInMonth,
-      revenue: round2(thisMonthRevenue),
-      paidTransactions: thisMonthPaidTransactions,
-      projectedGrossRevenue: round2(projectedGrossRevenue),
-      projectedTransactions,
-      expenses: {
-        github: FIXED_EXPENSES.github,
-        vercel: FIXED_EXPENSES.vercel,
-        hostinger: FIXED_EXPENSES.hostinger,
-        paypalFees: round2(projectedPayPalFees),
-        total: round2(fixedExpensesTotal + projectedPayPalFees)
-      },
-      projectedPayPalFees: round2(projectedPayPalFees),
-      projectedNetAfterPayPal: round2(projectedNetAfterPayPal),
-      ...projectedSplit,
-      earned: {
-        paypalFees: round2(earnedPayPalFees),
-        netAfterPayPal: round2(earnedNetAfterPayPal),
-        ...earnedSplit
-      }
-    };
-
     // Count active subscribers from users collection
     const usersSnap = await firestore.collection('users').get();
     let activeSubscribers = 0;
@@ -289,7 +155,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       thisMonthRevenue: parseFloat(thisMonthRevenue.toFixed(2)),
       lastMonthRevenue: parseFloat(lastMonthRevenue.toFixed(2)),
       monthOverMonthPercent: monthOverMonthPercent === null ? null : parseFloat(monthOverMonthPercent.toFixed(1)),
-      projectedPayout,
       activeSubscribers,
       aioSubscribers,
       singleSubscribers,
