@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { getAuth } from 'firebase/auth';
+import PayoutCharts, { type PayoutDay } from './PayoutCharts';
 
 // Owner-only. Only rendered for the owner (AdminPanel doesn't even list the
 // tab for anyone else), and the data comes from an owner-gated endpoint that
@@ -15,6 +16,8 @@ const CYCLES: { id: Cycle; label: string }[] = [
 interface PayoutData {
   periodStart: string;
   periodEnd: string;
+  todayKey: string;
+  days: PayoutDay[];
   daysElapsed: number;
   daysInPeriod: number;
   revenue: number;
@@ -92,13 +95,14 @@ export default function OwnerPayout() {
         </div>
       </div>
 
-      {loading && <div className="h-64 bg-white/5 rounded-2xl animate-pulse" />}
+      {loading && !data && <div className="h-64 bg-white/5 rounded-2xl animate-pulse" />}
 
       {!loading && error && (
         <div className="p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-500 text-sm">{error}</div>
       )}
 
-      {!loading && !error && data && (
+      {!error && data && (
+        <div className={`space-y-6 transition-opacity ${loading ? 'opacity-50' : ''}`}>
         <div className="bg-white/[0.02] border border-white/[0.04] rounded-2xl p-5 space-y-5">
           <h3 className="text-xs font-black uppercase tracking-widest text-white/40">
             {fmtDay(data.periodStart)} – {fmtDay(lastDayISO)}
@@ -139,6 +143,9 @@ export default function OwnerPayout() {
             Based on {fmt(data.revenue)} revenue and {data.paidTransactions} paid transaction{data.paidTransactions === 1 ? '' : 's'} from{' '}
             {fmtDay(data.periodStart)} through today (day {data.daysElapsed} of {data.daysInPeriod}).
           </p>
+        </div>
+
+        <PayoutCharts days={data.days} todayKey={data.todayKey} projectedEnd={data.projectedGrossRevenue} />
         </div>
       )}
     </div>

@@ -20,6 +20,14 @@ function startOfDay(d: Date): Date {
   return r;
 }
 
+// YYYY-MM-DD from local (server) date parts - the same day boundaries the
+// period math above uses, so a transaction is always bucketed into the day the
+// payout totals count it in.
+function dayKey(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
 function periodFor(cycle: 'cycle21' | 'calendar', now: Date): { start: Date; end: Date } {
   const anchorDay = cycle === 'calendar' ? 1 : 21;
   const start = new Date(now.getFullYear(), now.getMonth(), anchorDay, 0, 0, 0, 0);
@@ -55,13 +63,34 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .limit(2000)
       .get();
 
+    // Every day in the period up front (zero-filled), so the chart shows the
+    // whole period shape - including days that haven't happened yet.
+    const days: { date: string; total: number; transactions: { time: string; amount: number; plan: string | null }[] }[] = [];
+    const dayIndex: Record<string, number> = {};
+    for (let d = new Date(start); d < end; d.setDate(d.getDate() + 1)) {
+      dayIndex[dayKey(d)] = days.length;
+      days.push({ date: dayKey(d), total: 0, transactions: [] });
+    }
+
     let revenue = 0;
     let paidTransactions = 0;
     snapshot.docs.forEach(doc => {
-      const amt = countedAmount(doc.data(), 'OwnerPayout', doc.id);
+      const data = doc.data();
+      const amt = countedAmount(data, 'OwnerPayout', doc.id);
       if (amt === null) return;
       revenue += amt;
       paidTransactions += 1;
+
+      const created = data.createdAt?.toDate ? data.createdAt.toDate() : new Date(data.createdAt);
+      const idx = dayIndex[dayKey(created)];
+      if (idx !== undefined) {
+        days[idx].total += amt;
+        days[idx].transactions.push({ time: created.toISOString(), amount: amt, plan: data.plan || null });
+      }
+    });
+    days.forEach(day => {
+      day.total = parseFloat(day.total.toFixed(2));
+      day.transactions.sort((a, b) => a.time.localeCompare(b.time));
     });
 
     return res.status(200).json({
@@ -69,6 +98,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       cycle,
       periodStart: start.toISOString(),
       periodEnd: end.toISOString(),
+      todayKey: dayKey(now),
+      days,
       ...buildPayout(revenue, paidTransactions, daysElapsed, daysInPeriod)
     });
   } catch (err: any) {
