@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { getDb } from '../_lib/firebase-admin.js';
 import { requireAdmin } from '../_lib/auth.js';
-import { countedAmount } from '../_lib/payout.js';
+import { countedAmount, buildPayout } from '../_lib/payout.js';
 
 function startOfDay(d: Date): Date {
   const r = new Date(d);
@@ -122,6 +122,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       ? ((thisMonthRevenue - lastMonthRevenue) / lastMonthRevenue) * 100
       : (thisMonthRevenue > 0 ? null : 0); // null = no prior-month baseline to compare against
 
+    // Projected Monthly Payout (calendar month, 1st to end of month) - visible
+    // to admins as before. The math lives in ../_lib/payout.js, shared with the
+    // owner-only 21st-21st view so the two can never drift.
+    const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+    const daysElapsed = now.getDate();
+    const projectedPayout = {
+      daysInMonth,
+      ...buildPayout(thisMonthRevenue, thisMonthPaidTransactions, daysElapsed, daysInMonth)
+    };
+
     // Count active subscribers from users collection
     const usersSnap = await firestore.collection('users').get();
     let activeSubscribers = 0;
@@ -155,6 +165,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       thisMonthRevenue: parseFloat(thisMonthRevenue.toFixed(2)),
       lastMonthRevenue: parseFloat(lastMonthRevenue.toFixed(2)),
       monthOverMonthPercent: monthOverMonthPercent === null ? null : parseFloat(monthOverMonthPercent.toFixed(1)),
+      projectedPayout,
       activeSubscribers,
       aioSubscribers,
       singleSubscribers,

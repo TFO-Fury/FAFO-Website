@@ -8,6 +8,28 @@ interface RevenueData {
   thisMonthRevenue: number;
   lastMonthRevenue: number;
   monthOverMonthPercent: number | null;
+  projectedPayout: {
+    daysElapsed: number;
+    daysInMonth: number;
+    revenue: number;
+    paidTransactions: number;
+    projectedGrossRevenue: number;
+    projectedTransactions: number;
+    expenses: { github: number; vercel: number; hostinger: number; paypalFees: number; total: number };
+    projectedPayPalFees: number;
+    projectedNetAfterPayPal: number;
+    payoutsUnlocked: boolean;
+    owner1Payout: number;
+    owner2Payout: number;
+    fafoAllocation: number;
+    fafoReserve: number;
+    amountNeededToUnlock: number;
+    earned: {
+      paypalFees: number; netAfterPayPal: number; payoutsUnlocked: boolean;
+      owner1Payout: number; owner2Payout: number;
+      fafoAllocation: number; fafoReserve: number; amountNeededToUnlock: number;
+    };
+  } | null;
   activeSubscribers: number;
   aioSubscribers: number;
   singleSubscribers: number;
@@ -140,6 +162,49 @@ export default function AnalyticsDashboard({ onSelectUser }: AnalyticsDashboardP
         <Card icon={<Calendar className="w-4 h-4" />} label="Period" value={filter.label} accent="text-white/40" />
       </div>
 
+      {/* Projected Monthly Payout */}
+      {data?.projectedPayout && (
+        <div className="bg-white/[0.02] border border-white/[0.04] rounded-2xl p-5 space-y-5">
+          <h3 className="text-xs font-black uppercase tracking-widest text-white/40">Projected Monthly Payout</h3>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <PayoutColumn
+              label="Earned So Far"
+              sublabel="If sales stopped today"
+              revenue={data.projectedPayout.revenue}
+              paypalFees={data.projectedPayout.earned.paypalFees}
+              netAfterPayPal={data.projectedPayout.earned.netAfterPayPal}
+              owner1={data.projectedPayout.earned.owner1Payout}
+              owner2={data.projectedPayout.earned.owner2Payout}
+              fafoAllocation={data.projectedPayout.earned.fafoAllocation}
+              fafoReserve={data.projectedPayout.earned.fafoReserve}
+              amountNeededToUnlock={data.projectedPayout.earned.amountNeededToUnlock}
+              unlocked={data.projectedPayout.earned.payoutsUnlocked}
+            />
+            <PayoutColumn
+              label="Projected Month End"
+              sublabel="At the current pace"
+              revenue={data.projectedPayout.projectedGrossRevenue}
+              revenueLabel="Projected Revenue"
+              paypalFees={data.projectedPayout.projectedPayPalFees}
+              netAfterPayPal={data.projectedPayout.projectedNetAfterPayPal}
+              owner1={data.projectedPayout.owner1Payout}
+              owner2={data.projectedPayout.owner2Payout}
+              fafoAllocation={data.projectedPayout.fafoAllocation}
+              fafoReserve={data.projectedPayout.fafoReserve}
+              amountNeededToUnlock={data.projectedPayout.amountNeededToUnlock}
+              unlocked={data.projectedPayout.payoutsUnlocked}
+              accent
+            />
+          </div>
+
+          <p className="text-[10px] font-bold text-white/20 pt-4 border-t border-white/5">
+            Based on {fmt(data.projectedPayout.revenue)} revenue and {data.projectedPayout.paidTransactions} paid transaction{data.projectedPayout.paidTransactions === 1 ? '' : 's'} through{' '}
+            {new Date().toLocaleDateString(undefined, { month: 'long', day: 'numeric' })} (day {data.projectedPayout.daysElapsed} of {data.projectedPayout.daysInMonth}).
+          </p>
+        </div>
+      )}
+
       {/* Daily Revenue Bars */}
       {dailyEntries.length > 0 && (
         <div className="bg-white/[0.02] border border-white/[0.04] rounded-2xl p-5 space-y-4">
@@ -229,6 +294,70 @@ export default function AnalyticsDashboard({ onSelectUser }: AnalyticsDashboardP
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function PayoutColumn({
+  label, sublabel, revenue, revenueLabel, paypalFees, netAfterPayPal,
+  owner1, owner2, fafoAllocation, fafoReserve, amountNeededToUnlock, unlocked, accent
+}: {
+  label: string; sublabel: string; revenue: number; revenueLabel?: string; paypalFees: number; netAfterPayPal: number;
+  owner1: number; owner2: number; fafoAllocation: number; fafoReserve: number;
+  amountNeededToUnlock: number; unlocked: boolean; accent?: boolean;
+}) {
+  const fmt = (n: number) => `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  return (
+    <div className={`rounded-xl p-4 space-y-4 border ${accent ? 'bg-primary/[0.04] border-primary/10' : 'bg-white/[0.015] border-white/[0.04]'}`}>
+      <div className="flex items-baseline justify-between">
+        <span className="text-[10px] font-black uppercase tracking-widest text-white/40">{label}</span>
+        <span className="text-[9px] font-bold text-white/20">{sublabel}</span>
+      </div>
+
+      {/* Tiered split: the first $80 of net-after-PayPal funds FAFO's flat
+          operating budget; $80-$400 splits 50/50 between the owners with no
+          FAFO reserve; above $400, additional revenue splits 40/40/20 and
+          that's where FAFO's reserve/overflow starts accumulating. Payouts
+          are available as soon as the $80 budget is funded. */}
+      <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+        <ExpenseLine label={revenueLabel || 'Revenue'} value={fmt(revenue)} />
+        <ExpenseLine label="Net After PayPal/Fees" value={fmt(Math.max(0, netAfterPayPal - fafoAllocation))} />
+        <ExpenseLine label="FAFO Operating Budget Funded" value={fmt(fafoAllocation)} />
+      </div>
+
+      <div className="pt-3 border-t border-white/5 grid grid-cols-2 gap-3">
+        <div>
+          <div className="text-[9px] font-black uppercase tracking-widest text-white/20">Owner 1</div>
+          <div className={`text-lg font-black tabular-nums ${accent ? 'text-primary' : 'text-white/80'}`}>{fmt(owner1)}</div>
+        </div>
+        <div>
+          <div className="text-[9px] font-black uppercase tracking-widest text-white/20">Owner 2</div>
+          <div className={`text-lg font-black tabular-nums ${accent ? 'text-primary' : 'text-white/80'}`}>{fmt(owner2)}</div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+        <ExpenseLine label="PayPal + FAFO Fees" value={fmt(paypalFees + fafoReserve)} />
+      </div>
+
+      <div className={`text-[10px] font-black uppercase tracking-widest ${unlocked ? 'text-green-500' : 'text-yellow-500/80'}`}>
+        Payout Status: {unlocked ? 'Available' : 'Locked'}
+      </div>
+      {!unlocked && (
+        <div className="text-[9px] font-bold text-white/30">
+          {fmt(amountNeededToUnlock)} more needed to cover FAFO's $80 monthly operating budget.
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ExpenseLine({ label, value, accent, note }: { label: string; value: string; accent?: boolean; note?: string }) {
+  return (
+    <div>
+      <div className="text-[9px] font-black uppercase tracking-widest text-white/20 truncate">{label}</div>
+      <div className={`text-xs font-bold tabular-nums ${accent ? 'text-primary' : 'text-white/60'}`}>{value}</div>
+      {note && <div className="text-[8px] font-bold text-white/20 leading-tight mt-0.5">{note}</div>}
     </div>
   );
 }
