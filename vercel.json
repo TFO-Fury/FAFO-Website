@@ -1,6 +1,7 @@
 {
   "rewrites": [
-    { "source": "/auth/discord/callback", "destination": "/api/auth/discord/callback" }
+    { "source": "/auth/discord/callback", "destination": "/api/auth/discord/callback" },
+    { "source": "/survey", "destination": "/survey/index.html" }
   ],
   "crons": [
     { "path": "/api/cron/expire-entitlements", "schedule": "0 6 * * *" }

@@ -17,6 +17,17 @@ export default defineConfig(({mode}) => {
         '@': path.resolve(__dirname, '.'),
       },
     },
+    build: {
+      rollupOptions: {
+        // Multi-page build: /survey gets its own static HTML entry (survey/index.html)
+        // so it has its own <title>/OG tags in the raw response for link-preview bots
+        // (Discord, etc. don't run JS). Both entries mount the same React app/router.
+        input: {
+          main: path.resolve(__dirname, 'index.html'),
+          survey: path.resolve(__dirname, 'survey/index.html'),
+        },
+      },
+    },
     server: {
       // HMR is disabled in AI Studio via DISABLE_HMR env var.
       // Do not modifyâfile watching is disabled to prevent flickering during agent edits.

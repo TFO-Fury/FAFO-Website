@@ -29,6 +29,7 @@ import { Auth, logout, isAdmin, isOwner } from "./components/Auth";
 import { Dashboard } from "./components/Dashboard";
 import { AdminPanel } from "./components/AdminPanel";
 import { CheckoutModal } from "./components/CheckoutModal";
+import { SurveyPage } from "./components/SurveyPage";
 
 const NAV_LINKS = [
   { name: "Pricing", href: "#plans" }
@@ -49,7 +50,7 @@ type CartItem = {
   wowClass?: string;
 };
 
-type View = 'landing' | 'dashboard' | 'admin' | 'view-user';
+type View = 'landing' | 'dashboard' | 'admin' | 'view-user' | 'survey';
 
 function parseHash(hash: string): { view: View; targetUserId: string | null } {
   const clean = hash.replace(/^#/, '');
@@ -66,7 +67,10 @@ function hashForView(view: View, targetUserId: string | null): string {
     case 'dashboard': return '#dashboard';
     case 'admin': return '#admin';
     case 'view-user': return `#admin-user/${targetUserId || ''}`;
-    default: return window.location.pathname;
+    // Real path, not a hash - /survey has its own static HTML entry (see
+    // vite.config.ts) so it carries its own OG tags for link-preview bots.
+    case 'survey': return '/survey';
+    default: return '/';
   }
 }
 
@@ -96,7 +100,12 @@ export default function App() {
 
   // Seed the view from the URL on load and respond to Back/Forward navigation.
   useEffect(() => {
-    const initial = parseHash(window.location.hash);
+    // /survey is a real path (its own static HTML entry, see vite.config.ts),
+    // not a hash - check it first. Everything else still goes through the
+    // existing hash router.
+    const initial = window.location.pathname.replace(/\/$/, '') === '/survey'
+      ? { view: 'survey' as View, targetUserId: null }
+      : parseHash(window.location.hash);
     setView(initial.view);
     setAdminTargetUserId(initial.targetUserId);
     window.history.replaceState(
@@ -133,7 +142,14 @@ export default function App() {
         console.log(`[Auth] User signed in: ${authUser.email} (${authUser.uid})`);
       } else {
         setUserData(null);
-        syncView('landing');
+        // This fires on every load (including the very first one) for anyone
+        // not logged in - don't boot a signed-out visitor off a public page
+        // that doesn't need auth. Reads the URL directly rather than the
+        // `view` state: this effect has an empty dep array, so its closure
+        // only ever sees the view from the very first render.
+        if (window.location.pathname.replace(/\/$/, '') !== '/survey') {
+          syncView('landing');
+        }
       }
     });
     return () => unsubAuth();
@@ -601,6 +617,8 @@ export default function App() {
                 <AdminPanel isOwner={isOwner(userData)} onViewUser={(userId) => {
                   navigateTo('view-user', userId);
                 }} />
+              ) : view === 'survey' ? (
+                <SurveyPage />
               ) : null}
             </>
           )}
