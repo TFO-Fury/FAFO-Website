@@ -12,6 +12,19 @@ import { classForSpec, activeClassExpiryForSpec } from '../_lib/wow-classes.js';
 // Response is deliberately minimal: never echo back anything beyond this one spec's validity, so
 // the endpoint can't be used to enumerate everything a key is entitled to.
 
+// Owner + admin + trusted-tester keys that stay exempt from the under-construction
+// kill switch below, so a spec can be worked on/tested live without it also being
+// blocked for the people doing that work. Looked up by account email, 2026-10-09:
+// nick9284@gmail.com (owner), darkosemail428@gmail.com + emitchell109@gmail.com
+// (admins), weafer@live.com (trusted tester). Still subject to every other check
+// (rate limit, key status, real entitlement) - this only skips the kill switch.
+const DEV_KEYS = new Set([
+  'DE3FC79179B29FFDA81EA565454AF99DD97E7290D3A3678EC52715D0DC60F736', // nick9284@gmail.com
+  '22473829E900858B748AF37D53693F852A5C8E1358511ED4222CF2EB540FE668', // darkosemail428@gmail.com
+  '57445FF9D35527B262AE3581CE5551BF5384FA16FCD0AE0DD19CB01A7C9CC877', // emitchell109@gmail.com
+  '8F313715A9BB8669E588F874F52027B8A3FEA777DBD410E8B740343B040B4B22', // weafer@live.com
+]);
+
 // Simple in-memory rate limiter (per-function-instance, best-effort for serverless) — same shape
 // as api/sync-license.ts, keyed by license key rather than IP since this is an unauthenticated,
 // widely-distributed desktop client rather than a single admin session.
@@ -57,9 +70,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // everyone instantly while a bug in it is being fixed, without needing a
     // per-customer explanation. Checked before the real entitlement check so
     // it applies regardless of what a given key is otherwise entitled to.
-    const specsConfigSnap = await firestore.collection('config').doc('managerSpecs').get();
-    if (specsConfigSnap.exists && specsConfigSnap.data()?.disabled?.[spec]) {
-      return res.status(200).json({ valid: false, underConstruction: true });
+    // DEV_KEYS are exempt so the spec can still be tested live while it's
+    // under construction for everyone else.
+    if (!DEV_KEYS.has(key)) {
+      const specsConfigSnap = await firestore.collection('config').doc('managerSpecs').get();
+      if (specsConfigSnap.exists && specsConfigSnap.data()?.disabled?.[spec]) {
+        return res.status(200).json({ valid: false, underConstruction: true });
+      }
     }
 
     const keySnap = await firestore.collection('cd_keys').doc(key).get();
