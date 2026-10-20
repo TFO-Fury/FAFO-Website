@@ -56,6 +56,7 @@ export const SPEC_TO_CLASS: Record<string, string> = {
   'Warlock-Demonology': 'warlock',
   'DemonHunter-Havoc': 'demon hunter',
   'DemonHunter-Vengeance': 'demon hunter',
+  'DemonHunter-Devourer': 'demon hunter',
   'Evoker-Preservation': 'evoker',
   'Evoker-Devastation': 'evoker',
   'Evoker-Augmentation': 'evoker',

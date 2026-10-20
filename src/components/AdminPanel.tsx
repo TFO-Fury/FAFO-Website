@@ -54,7 +54,7 @@ const OWNER_TAB = { id: 'payout', label: 'My Payout', icon: <DollarSign classNam
 // display. Keep in sync with rotations/*.json in the FAFO-Rotations repo.
 const MANAGER_SPECS: Record<string, string[]> = {
   DeathKnight: ['DeathKnight-Blood', 'DeathKnight-Frost', 'DeathKnight-Unholy'],
-  DemonHunter: ['DemonHunter-Havoc'],
+  DemonHunter: ['DemonHunter-Devourer', 'DemonHunter-Havoc'],
   Druid: ['Druid-Balance', 'Druid-Feral', 'Druid-Guardian', 'Druid-Restoration'],
   Evoker: ['Evoker-Devastation', 'Evoker-Preservation'],
   Hunter: ['Hunter-BeastMastery', 'Hunter-Marksmanship', 'Hunter-Survival'],
