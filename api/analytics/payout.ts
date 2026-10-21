@@ -8,9 +8,13 @@ import { countedAmount, buildPayout } from '../_lib/payout.js';
 // response an admin can see, and gated by requireOwner, which 404s for anyone
 // else - not even a 403 that would confirm the route exists.
 //
-// Two billing periods:
-//   cycle=21       (default) the 21st through the next 21st
+// Three windows:
+//   cycle=cycle21  (default) the 21st through the next 21st
 //   cycle=calendar the 1st through the next 1st
+//   cycle=last30   a rolling 30 days ending today - always fully elapsed (no
+//                  future days to project), so "how much to actually pay out
+//                  right now" regardless of where the billing cycle sits.
+//                  Rolls forward a day every day on its own; nothing to update.
 
 const DAY_MS = 86400000;
 
@@ -58,7 +62,14 @@ function dayKey(d: Date): string {
   return `${y}-${pad(m)}-${pad(day)}`;
 }
 
-function periodFor(cycle: 'cycle21' | 'calendar', now: Date): { start: Date; end: Date } {
+function periodFor(cycle: 'cycle21' | 'calendar' | 'last30', now: Date): { start: Date; end: Date } {
+  if (cycle === 'last30') {
+    // Owner-midnight tomorrow (exclusive upper bound = all of today included)
+    // back to owner-midnight 30 days before that - a 30-day window, today inclusive.
+    const end = new Date(startOfOwnerDay(now).getTime() + DAY_MS);
+    const start = new Date(end.getTime() - 30 * DAY_MS);
+    return { start, end };
+  }
   const anchorDay = cycle === 'calendar' ? 1 : 21;
   const { y, m, day } = easternParts(now);
   let startY = y, startM = m;
@@ -82,7 +93,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!caller) return;
 
   try {
-    const cycle = req.query.cycle === 'calendar' ? 'calendar' : 'cycle21';
+    const cycle = req.query.cycle === 'calendar' ? 'calendar' : req.query.cycle === 'last30' ? 'last30' : 'cycle21';
     const now = new Date();
     const { start, end } = periodFor(cycle, now);
 
