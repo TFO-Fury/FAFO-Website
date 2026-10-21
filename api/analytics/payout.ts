@@ -14,26 +14,62 @@ import { countedAmount, buildPayout } from '../_lib/payout.js';
 
 const DAY_MS = 86400000;
 
-function startOfDay(d: Date): Date {
-  const r = new Date(d);
-  r.setHours(0, 0, 0, 0);
-  return r;
+// Vercel functions run in UTC - plain `now.getDate()` etc. read the UTC
+// calendar day, not the owner's. That's invisible most of the day but flips
+// the "today"/period-boundary math to the wrong day for the few hours each
+// evening (Eastern) after UTC has already crossed midnight but the owner's
+// wall clock hasn't - e.g. showing a brand-new empty period a few hours
+// early. Everything here reads the calendar day in the owner's zone instead.
+const OWNER_TZ = 'America/New_York';
+
+function easternParts(d: Date): { y: number; m: number; day: number } {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: OWNER_TZ, year: 'numeric', month: '2-digit', day: '2-digit'
+  }).formatToParts(d);
+  const get = (type: string) => +parts.find(p => p.type === type)!.value;
+  return { y: get('year'), m: get('month'), day: get('day') };
 }
 
-// YYYY-MM-DD from local (server) date parts - the same day boundaries the
-// period math above uses, so a transaction is always bucketed into the day the
-// payout totals count it in.
+// Midnight on (y, m, day) *in OWNER_TZ*, as the correct UTC instant - not a
+// fixed-offset guess, so this stays correct across the DST transition too.
+// Standard trick: render a UTC guess in OWNER_TZ, measure how far that
+// render is from the guess, and apply that same delta to correct it.
+function ownerMidnightUTC(y: number, m: number, day: number): Date {
+  const guess = new Date(Date.UTC(y, m - 1, day, 0, 0, 0));
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: OWNER_TZ, hour12: false,
+    year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit'
+  }).formatToParts(guess);
+  const get = (type: string) => +parts.find(p => p.type === type)!.value;
+  const renderedAsUTC = Date.UTC(get('year'), get('month') - 1, get('day'), get('hour') % 24, get('minute'), get('second'));
+  return new Date(guess.getTime() + (guess.getTime() - renderedAsUTC));
+}
+
+function startOfOwnerDay(d: Date): Date {
+  const { y, m, day } = easternParts(d);
+  return ownerMidnightUTC(y, m, day);
+}
+
+// YYYY-MM-DD in the owner's zone - matches the period-boundary math above, so
+// a transaction is always bucketed into the day the payout totals count it in.
 function dayKey(d: Date): string {
+  const { y, m, day } = easternParts(d);
   const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  return `${y}-${pad(m)}-${pad(day)}`;
 }
 
 function periodFor(cycle: 'cycle21' | 'calendar', now: Date): { start: Date; end: Date } {
   const anchorDay = cycle === 'calendar' ? 1 : 21;
-  const start = new Date(now.getFullYear(), now.getMonth(), anchorDay, 0, 0, 0, 0);
-  if (now.getDate() < anchorDay) start.setMonth(start.getMonth() - 1);
-  const end = new Date(start);
-  end.setMonth(end.getMonth() + 1);
+  const { y, m, day } = easternParts(now);
+  let startY = y, startM = m;
+  if (day < anchorDay) {
+    startM -= 1;
+    if (startM === 0) { startM = 12; startY -= 1; }
+  }
+  const start = ownerMidnightUTC(startY, startM, anchorDay);
+  const endM = startM === 12 ? 1 : startM + 1;
+  const endY = startM === 12 ? startY + 1 : startY;
+  const end = ownerMidnightUTC(endY, endM, anchorDay);
   return { start, end };
 }
 
@@ -53,7 +89,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const daysInPeriod = Math.round((end.getTime() - start.getTime()) / DAY_MS);
     const daysElapsed = Math.min(
       daysInPeriod,
-      Math.max(1, Math.round((startOfDay(now).getTime() - start.getTime()) / DAY_MS) + 1)
+      Math.max(1, Math.round((startOfOwnerDay(now).getTime() - start.getTime()) / DAY_MS) + 1)
     );
 
     const firestore = await getDb();
