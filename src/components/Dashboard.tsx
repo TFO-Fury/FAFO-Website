@@ -64,6 +64,35 @@ export function Dashboard({ onUpgrade, targetUserId }: DashboardProps) {
   const [adminExpiresAt, setAdminExpiresAt] = useState('');
   const [isSaving, setIsSaving] = useState(false);
 
+  const [recentPings, setRecentPings] = useState<{ spec: string | null; class: string | null; at: string | null }[]>([]);
+  const [pingsLoading, setPingsLoading] = useState(false);
+
+  // Recent manager pings - admin-only, same last-seen data source as the
+  // admin panel's "Last Ping" column, just the last 10 instead of only the
+  // latest one.
+  useEffect(() => {
+    if (!isAdminViewing || !currentUid) return;
+    let cancelled = false;
+    (async () => {
+      setPingsLoading(true);
+      try {
+        const token = await auth.currentUser?.getIdToken();
+        const res = await fetch(`/api/admin/user-pings?userId=${currentUid}`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {}
+        });
+        if (!res.ok) throw new Error(`Pings API ${res.status}`);
+        const json = await res.json();
+        if (!cancelled) setRecentPings(json.pings || []);
+      } catch (err) {
+        console.error('[Dashboard] Failed to load recent pings:', err);
+        if (!cancelled) setRecentPings([]);
+      } finally {
+        if (!cancelled) setPingsLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [isAdminViewing, currentUid]);
+
   useEffect(() => {
     if (!currentUid) return;
 
@@ -742,6 +771,52 @@ export function Dashboard({ onUpgrade, targetUserId }: DashboardProps) {
           )}
         </div>
       </div>
+
+      {isAdminViewing && (
+        <div className="space-y-6">
+          <div className="flex items-center gap-3">
+            <Clock className="w-6 h-6 text-primary" />
+            <h2 className="text-2xl font-black font-display uppercase tracking-widest italic">Recent Pings</h2>
+          </div>
+
+          <div className="overflow-hidden rounded-[32px] border border-white/5 bg-surface-dark shadow-2xl">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="border-b border-white/5">
+                  <th className="px-8 py-6 text-[10px] font-black text-white/20 uppercase tracking-[0.3em]">Spec</th>
+                  <th className="px-8 py-6 text-[10px] font-black text-white/20 uppercase tracking-[0.3em]">Class</th>
+                  <th className="px-8 py-6 text-[10px] font-black text-white/20 uppercase tracking-[0.3em]">When</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/5">
+                {pingsLoading ? (
+                  <tr>
+                    <td colSpan={3} className="px-8 py-12 text-center text-[10px] font-black text-white/10 italic uppercase tracking-widest">Loading...</td>
+                  </tr>
+                ) : recentPings.length === 0 ? (
+                  <tr>
+                    <td colSpan={3} className="px-8 py-12 text-center text-[10px] font-black text-white/10 italic uppercase tracking-widest">No pings recorded yet</td>
+                  </tr>
+                ) : (
+                  recentPings.map((p, i) => (
+                    <tr key={i} className="hover:bg-white/[0.02] transition-colors">
+                      <td className="px-8 py-6">
+                        <span className="text-xs font-black text-white uppercase tracking-tight">{p.spec || 'Unknown'}</span>
+                      </td>
+                      <td className="px-8 py-6">
+                        <span className="text-xs font-bold text-primary italic tracking-widest">{formatClassName(p.class)}</span>
+                      </td>
+                      <td className="px-8 py-6">
+                        <span className="text-[10px] font-bold text-white/30 tabular-nums">{p.at ? new Date(p.at).toLocaleString() : 'N/A'}</span>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 gap-8">
         {/* Purchase History */}

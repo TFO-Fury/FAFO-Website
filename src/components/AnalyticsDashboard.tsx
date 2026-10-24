@@ -45,6 +45,12 @@ const timeFilters = [
   { label: 'This Year', days: 365 }
 ];
 
+interface SpecPopularity {
+  windowDays: number;
+  activePlayers: number;
+  specs: { spec: string; class: string; players: number; percent: number }[];
+}
+
 interface AnalyticsDashboardProps {
   onSelectUser?: (email: string) => void;
 }
@@ -55,6 +61,33 @@ export default function AnalyticsDashboard({ onSelectUser }: AnalyticsDashboardP
   const [loading, setLoading] = useState(true);
   const [filterIdx, setFilterIdx] = useState(0); // 7 days default
   const [error, setError] = useState<string | null>(null);
+
+  // Independent of the time-filter tabs above - spec popularity is always a
+  // fixed trailing-7-day window (see api/analytics/spec-popularity.ts), so it
+  // loads once rather than refetching when the filter changes.
+  const [specPop, setSpecPop] = useState<SpecPopularity | null>(null);
+  const [specPopLoading, setSpecPopLoading] = useState(true);
+  const [specPopError, setSpecPopError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const token = await getAuth().currentUser?.getIdToken();
+        const res = await fetch('/api/analytics/spec-popularity', {
+          headers: token ? { Authorization: `Bearer ${token}` } : {}
+        });
+        if (!res.ok) throw new Error(`Spec Popularity API ${res.status}`);
+        const json = await res.json();
+        if (!cancelled) setSpecPop(json);
+      } catch (e: any) {
+        if (!cancelled) setSpecPopError(e.message || 'Failed to load spec popularity');
+      } finally {
+        if (!cancelled) setSpecPopLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   const filter = timeFilters[filterIdx];
   const days = filter.days;
@@ -294,8 +327,71 @@ export default function AnalyticsDashboard({ onSelectUser }: AnalyticsDashboardP
           </div>
         </div>
       )}
+
+      {/* Spec Popularity - always a fixed 7-day window, independent of the
+          time-filter tabs above (see the dedicated fetch). */}
+      {!specPopLoading && specPopError && (
+        <div className="p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-500 text-sm">{specPopError}</div>
+      )}
+      {specPop && <SpecPopularityChart data={specPop} />}
     </div>
   );
+}
+
+// One row per spec (all ~40, including specs nobody's played in the window,
+// at 0%) sorted by popularity. This is a real HTML table, not a div-based bar
+// chart with a separate "table view" bolted on - the bar is a background
+// fill inside the % cell, so the same markup IS both the visual chart and the
+// accessible data table (every value is plain text, nothing is chart-only).
+// Single series (just "% of active players"), so one flat color, no legend.
+function SpecPopularityChart({ data }: { data: SpecPopularity }) {
+  const maxPercent = Math.max(1, ...data.specs.map(s => s.percent));
+  return (
+    <div className="bg-white/[0.02] border border-white/[0.04] rounded-2xl p-5 space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-xs font-black uppercase tracking-widest text-white/40">Spec Popularity</h3>
+          <p className="text-[10px] font-bold text-white/20 mt-1">
+            % of active players on each spec, last {data.windowDays} days ({data.activePlayers} active player{data.activePlayers === 1 ? '' : 's'})
+          </p>
+        </div>
+      </div>
+
+      {data.activePlayers === 0 ? (
+        <p className="text-[10px] font-bold text-white/20 italic py-4">No manager activity in the last {data.windowDays} days yet.</p>
+      ) : (
+        <table className="w-full border-collapse">
+          <tbody>
+            {data.specs.map(s => (
+              <tr key={s.spec} className="group">
+                <td className="py-1 pr-3 w-[1%] whitespace-nowrap">
+                  <span className="text-[11px] font-black text-white/70 uppercase tracking-tight">{s.spec}</span>
+                </td>
+                <td className="py-1 pr-3 w-[1%] whitespace-nowrap hidden sm:table-cell">
+                  <span className="text-[9px] font-bold text-white/25 uppercase tracking-widest">{formatClassLabel(s.class)}</span>
+                </td>
+                <td className="py-1 w-full">
+                  <div className="h-3 rounded bg-white/[0.03] overflow-hidden" title={`${s.spec}: ${s.percent}% (${s.players} player${s.players === 1 ? '' : 's'})`}>
+                    <div
+                      className="h-full rounded bg-primary/70 group-hover:bg-primary transition-colors"
+                      style={{ width: `${(s.percent / maxPercent) * 100}%` }}
+                    />
+                  </div>
+                </td>
+                <td className="py-1 pl-3 w-[1%] whitespace-nowrap text-right">
+                  <span className="text-[11px] font-bold text-white/60 tabular-nums">{s.percent}%</span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+}
+
+function formatClassLabel(cls: string): string {
+  return cls.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
 }
 
 function PayoutColumn({
