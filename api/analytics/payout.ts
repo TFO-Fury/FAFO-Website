@@ -9,12 +9,13 @@ import { countedAmount, buildPayout } from '../_lib/payout.js';
 // else - not even a 403 that would confirm the route exists.
 //
 // Three windows:
-//   cycle=cycle21  (default) the 21st through the next 21st
-//   cycle=calendar the 1st through the next 1st
-//   cycle=last30   a rolling 30 days ending today - always fully elapsed (no
-//                  future days to project), so "how much to actually pay out
-//                  right now" regardless of where the billing cycle sits.
-//                  Rolls forward a day every day on its own; nothing to update.
+//   cycle=cycle21   (default) the 21st through the next 21st
+//   cycle=calendar  the 1st through the next 1st
+//   cycle=lastCycle the PREVIOUS 21st-21st cycle, already closed - frozen,
+//                   the actual final amount to go pay out. Only changes once
+//                   a month, the moment the 21st rolls the current cycle
+//                   over, not day to day like a rolling window would (that
+//                   was the first version of this - wrong, see git history).
 
 const DAY_MS = 86400000;
 
@@ -62,20 +63,23 @@ function dayKey(d: Date): string {
   return `${y}-${pad(m)}-${pad(day)}`;
 }
 
-function periodFor(cycle: 'cycle21' | 'calendar' | 'last30', now: Date): { start: Date; end: Date } {
-  if (cycle === 'last30') {
-    // Owner-midnight tomorrow (exclusive upper bound = all of today included)
-    // back to owner-midnight 30 days before that - a 30-day window, today inclusive.
-    const end = new Date(startOfOwnerDay(now).getTime() + DAY_MS);
-    const start = new Date(end.getTime() - 30 * DAY_MS);
-    return { start, end };
-  }
+function periodFor(cycle: 'cycle21' | 'calendar' | 'lastCycle', now: Date): { start: Date; end: Date } {
   const anchorDay = cycle === 'calendar' ? 1 : 21;
   const { y, m, day } = easternParts(now);
   let startY = y, startM = m;
   if (day < anchorDay) {
     startM -= 1;
     if (startM === 0) { startM = 12; startY -= 1; }
+  }
+  // startY/startM/anchorDay is the CURRENT cycle's start. lastCycle steps
+  // back one more month and uses that same boundary as ITS end - so it's
+  // always the one full cycle immediately before the one in progress.
+  if (cycle === 'lastCycle') {
+    let prevM = startM - 1, prevY = startY;
+    if (prevM === 0) { prevM = 12; prevY -= 1; }
+    const start = ownerMidnightUTC(prevY, prevM, anchorDay);
+    const end = ownerMidnightUTC(startY, startM, anchorDay);
+    return { start, end };
   }
   const start = ownerMidnightUTC(startY, startM, anchorDay);
   const endM = startM === 12 ? 1 : startM + 1;
@@ -93,7 +97,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!caller) return;
 
   try {
-    const cycle = req.query.cycle === 'calendar' ? 'calendar' : req.query.cycle === 'last30' ? 'last30' : 'cycle21';
+    const cycle = req.query.cycle === 'calendar' ? 'calendar' : req.query.cycle === 'lastCycle' ? 'lastCycle' : 'cycle21';
     const now = new Date();
     const { start, end } = periodFor(cycle, now);
 

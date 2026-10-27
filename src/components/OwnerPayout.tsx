@@ -44,9 +44,9 @@ const fmt = (n: number) => `$${n.toLocaleString(undefined, { minimumFractionDigi
 const fmtDay = (iso: string) => new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', timeZone: 'UTC' });
 
 // Fetches one cycle's payout data. Shared by the main (cycle-switchable) view
-// and the fixed Last 30 Days section below it, which always loads independently
-// of whichever cycle is selected above.
-function usePayoutData(cycle: Cycle | 'last30') {
+// and the fixed Last Payout Period section below it, which always loads
+// independently of whichever cycle is selected above.
+function usePayoutData(cycle: Cycle | 'lastCycle') {
   const [data, setData] = useState<PayoutData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -80,7 +80,7 @@ function usePayoutData(cycle: Cycle | 'last30') {
 export default function OwnerPayout() {
   const [cycle, setCycle] = useState<Cycle>('cycle21');
   const { data, loading, error } = usePayoutData(cycle);
-  const last30 = usePayoutData('last30');
+  const lastCycle = usePayoutData('lastCycle');
 
   return (
     <div className="p-6 space-y-6 max-w-6xl mx-auto">
@@ -157,45 +157,44 @@ export default function OwnerPayout() {
         </div>
       )}
 
-      {/* Fixed window, always shown regardless of the cycle toggle above - the actual
-          amount to pay out right now, not tied to where the billing cycle sits. Fully
-          elapsed (no future days), so there's only one number, not an earned/projected
-          split. Rolls forward a day on its own - nothing to update. */}
+      {/* The previous, already-closed 21st-21st cycle - frozen. Always shown regardless
+          of the cycle toggle above, and only changes once a month, the moment the 21st
+          rolls the current cycle over - not day to day, so it stays put while it's
+          actually being paid out. */}
       <div className="pt-2">
-        <h2 className="text-lg font-black uppercase tracking-[0.2em] text-white/80 mb-4">Last 30 Days — Payout Due</h2>
+        <h2 className="text-lg font-black uppercase tracking-[0.2em] text-white/80 mb-4">Last Payout Period</h2>
 
-        {last30.loading && !last30.data && <div className="h-48 bg-white/5 rounded-2xl animate-pulse" />}
+        {lastCycle.loading && !lastCycle.data && <div className="h-48 bg-white/5 rounded-2xl animate-pulse" />}
 
-        {!last30.loading && last30.error && (
-          <div className="p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-500 text-sm">{last30.error}</div>
+        {!lastCycle.loading && lastCycle.error && (
+          <div className="p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-500 text-sm">{lastCycle.error}</div>
         )}
 
-        {!last30.error && last30.data && (
-          <div className={`bg-white/[0.02] border border-white/[0.04] rounded-2xl p-5 space-y-5 transition-opacity ${last30.loading ? 'opacity-50' : ''}`}>
+        {!lastCycle.error && lastCycle.data && (
+          <div className={`bg-white/[0.02] border border-white/[0.04] rounded-2xl p-5 space-y-5 transition-opacity ${lastCycle.loading ? 'opacity-50' : ''}`}>
             <h3 className="text-xs font-black uppercase tracking-widest text-white/40">
-              {fmtDay(last30.data.periodStart)} – {fmtDay(last30.data.periodEnd)}
+              {fmtDay(lastCycle.data.periodStart)} – {fmtDay(lastCycle.data.periodEnd)}
             </h3>
 
             <div className="max-w-sm">
               <PayoutColumn
-                label="Last 30 Days"
-                sublabel="Actual, not projected"
-                revenue={last30.data.revenue}
-                paypalFees={last30.data.earned.paypalFees}
-                netAfterPayPal={last30.data.earned.netAfterPayPal}
-                owner1={last30.data.earned.owner1Payout}
-                owner2={last30.data.earned.owner2Payout}
-                fafoAllocation={last30.data.earned.fafoAllocation}
-                fafoReserve={last30.data.earned.fafoReserve}
-                amountNeededToUnlock={last30.data.earned.amountNeededToUnlock}
-                unlocked={last30.data.earned.payoutsUnlocked}
+                label="Last Cycle"
+                sublabel="Final, closed"
+                revenue={lastCycle.data.revenue}
+                paypalFees={lastCycle.data.earned.paypalFees}
+                netAfterPayPal={lastCycle.data.earned.netAfterPayPal}
+                owner1={lastCycle.data.earned.owner1Payout}
+                owner2={lastCycle.data.earned.owner2Payout}
+                fafoAllocation={lastCycle.data.earned.fafoAllocation}
+                fafoReserve={lastCycle.data.earned.fafoReserve}
+                amountNeededToUnlock={lastCycle.data.earned.amountNeededToUnlock}
+                unlocked={lastCycle.data.earned.payoutsUnlocked}
                 accent
               />
             </div>
 
             <p className="text-[10px] font-bold text-white/20 pt-4 border-t border-white/5">
-              Based on {fmt(last30.data.revenue)} revenue and {last30.data.paidTransactions} paid transaction{last30.data.paidTransactions === 1 ? '' : 's'} from{' '}
-              {fmtDay(last30.data.periodStart)} through today.
+              {fmt(lastCycle.data.revenue)} revenue and {lastCycle.data.paidTransactions} paid transaction{lastCycle.data.paidTransactions === 1 ? '' : 's'} for the full {fmtDay(lastCycle.data.periodStart)} – {fmtDay(lastCycle.data.periodEnd)} cycle.
             </p>
           </div>
         )}
