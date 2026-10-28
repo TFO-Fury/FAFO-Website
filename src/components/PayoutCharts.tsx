@@ -13,6 +13,7 @@ export interface PayoutDay { date: string; total: number; transactions: PayoutTr
 
 const SERIES = 'var(--color-primary)';
 const SERIES_HOVER = '#ff7a3d';
+const COMPARE = '#eab308';
 const SURFACE = 'var(--color-background)';
 const GRID = 'rgba(255,255,255,0.06)';
 const INK_MUTED = 'rgba(255,255,255,0.32)';
@@ -206,7 +207,12 @@ function DailyColumns({ days, todayKey }: { days: PayoutDay[]; todayKey: string 
   );
 }
 
-function CumulativeLine({ days, todayKey, projectedEnd }: { days: PayoutDay[]; todayKey: string; projectedEnd: number }) {
+function CumulativeLine({
+  days, todayKey, projectedEnd, compareDays, compareLabel
+}: {
+  days: PayoutDay[]; todayKey: string; projectedEnd: number;
+  compareDays?: PayoutDay[]; compareLabel?: string;
+}) {
   const { ref, width } = useWidth();
   const [hover, setHover] = useState<number | null>(null);
   const H = 230;
@@ -226,24 +232,57 @@ function CumulativeLine({ days, todayKey, projectedEnd }: { days: PayoutDay[]; t
   const cumToday = cum[todayIdx] ?? 0;
   const hasProjection = todayIdx < N - 1;
   const endValue = hasProjection ? projectedEnd : cumToday;
-  const { max: yMax, ticks } = niceScale(Math.max(cumToday, endValue));
+
+  // Comparison period (e.g. last month) ran a different number of days and on
+  // different calendar dates, so it's plotted by its position FRACTION through
+  // its own period (day 3 of 30 vs day 3 of 31 line up close enough to be
+  // useful) rather than by date or raw day index - and it's always fully
+  // "elapsed" since it's already closed, so no projection segment for it.
+  const hasCompare = !!compareDays && compareDays.length > 0;
+  const cCum: number[] = [];
+  if (hasCompare) {
+    let r = 0;
+    for (const d of compareDays!) { r += d.total; cCum.push(r); }
+  }
+  const cN = cCum.length;
+  const compareTotal = cN ? cCum[cN - 1] : 0;
+  const cxFrac = (frac: number) => M.l + plotW * frac;
+  const cCx = (i: number) => cxFrac(cN > 1 ? i / (cN - 1) : 0);
+
+  const { max: yMax, ticks } = niceScale(Math.max(cumToday, endValue, compareTotal));
   const yOf = (v: number) => M.t + plotH - (v / yMax) * plotH;
 
   const linePath = cum.map((v, i) => `${i === 0 ? 'M' : 'L'}${cx(i)},${yOf(v)}`).join(' ');
   const areaPath = cum.length ? `${linePath} L${cx(todayIdx)},${yOf(0)} L${cx(0)},${yOf(0)} Z` : '';
+  const comparePath = cCum.map((v, i) => `${i === 0 ? 'M' : 'L'}${cCx(i)},${yOf(v)}`).join(' ');
 
   const valueAt = (i: number) => {
     if (i <= todayIdx) return { v: cum[i], projected: false };
     const t = (i - todayIdx) / (N - 1 - todayIdx);
     return { v: cumToday + (endValue - cumToday) * t, projected: true };
   };
+  // Same period-fraction lookup as the compare line itself, so the tooltip
+  // shows "what last period had done by this same point" next to today's value.
+  const compareValueAt = (i: number) => {
+    if (!hasCompare || N < 2) return null;
+    const frac = i / (N - 1);
+    const ci = Math.round(frac * (cN - 1));
+    return cCum[Math.min(cN - 1, Math.max(0, ci))];
+  };
   const hv = hover !== null ? valueAt(hover) : null;
+  const hcv = hover !== null ? compareValueAt(hover) : null;
   const labelEvery = Math.max(1, Math.ceil(N / 7));
 
   return (
     <div ref={ref} className="relative" onPointerLeave={() => setHover(null)}>
+      {hasCompare && (
+        <div className="flex items-center gap-4 mb-2 text-[10px] font-bold text-white/40">
+          <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-[2px] rounded" style={{ background: SERIES }} />This period</span>
+          <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-[2px] rounded" style={{ background: COMPARE }} />{compareLabel || 'Last period'}</span>
+        </div>
+      )}
       {width > 0 && (
-        <svg width={width} height={H} role="img" aria-label="Cumulative revenue over the period with a dashed projection to the end at the current pace.">
+        <svg width={width} height={H} role="img" aria-label={`Cumulative revenue over the period with a dashed projection to the end at the current pace.${hasCompare ? ` ${compareLabel || 'Last period'} shown for comparison.` : ''}`}>
           {ticks.map(t => (
             <g key={t}>
               <line x1={M.l} x2={width - M.r} y1={yOf(t)} y2={yOf(t)} stroke={GRID} strokeWidth={1} />
@@ -251,11 +290,21 @@ function CumulativeLine({ days, todayKey, projectedEnd }: { days: PayoutDay[]; t
             </g>
           ))}
 
+          {comparePath && <path d={comparePath} fill="none" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" style={{ stroke: COMPARE }} opacity={0.85} />}
           {areaPath && <path d={areaPath} style={{ fill: SERIES }} fillOpacity={0.1} />}
           {linePath && <path d={linePath} fill="none" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" style={{ stroke: SERIES }} />}
           {hasProjection && (
             <line x1={cx(todayIdx)} y1={yOf(cumToday)} x2={cx(N - 1)} y2={yOf(endValue)}
               strokeWidth={2} strokeLinecap="round" strokeDasharray="2 6" style={{ stroke: SERIES }} opacity={0.7} />
+          )}
+
+          {hasCompare && cN > 0 && (
+            <>
+              <circle cx={cCx(cN - 1)} cy={yOf(compareTotal)} r={4} strokeWidth={2} style={{ fill: COMPARE, stroke: SURFACE }} opacity={0.9} />
+              <text x={cCx(cN - 1)} y={yOf(compareTotal) - 10} textAnchor="end" fontSize={11} fontWeight={700} fill={COMPARE}>
+                {moneyWhole(compareTotal)}
+              </text>
+            </>
           )}
 
           {/* End-dots carry a 2px surface ring. Labels use text ink, never the series color. */}
@@ -276,6 +325,9 @@ function CumulativeLine({ days, todayKey, projectedEnd }: { days: PayoutDay[]; t
             <g pointerEvents="none">
               <line x1={cx(hover)} x2={cx(hover)} y1={M.t} y2={M.t + plotH} stroke="rgba(255,255,255,0.18)" strokeWidth={1} />
               <circle cx={cx(hover)} cy={yOf(hv.v)} r={4.5} strokeWidth={2} style={{ fill: SERIES, stroke: SURFACE }} />
+              {hcv !== null && (
+                <circle cx={cx(hover)} cy={yOf(hcv)} r={4} strokeWidth={2} style={{ fill: COMPARE, stroke: SURFACE }} />
+              )}
             </g>
           )}
 
@@ -298,9 +350,18 @@ function CumulativeLine({ days, todayKey, projectedEnd }: { days: PayoutDay[]; t
       {hover !== null && hv && (
         <Tooltip left={cx(hover)} width={width}>
           <div className="text-[10px] font-bold text-white/50">{longDay(days[hover].date)}</div>
-          <div className="text-base font-black text-white leading-tight">{money(hv.v)}</div>
-          <div className="flex items-center gap-2 text-[10px] font-bold text-white/40">
+          <div className="flex items-center gap-2 text-[11px]">
             <span className="inline-block w-3 h-[2px] rounded" style={{ background: SERIES, opacity: hv.projected ? 0.6 : 1 }} />
+            <span className="font-black text-white tabular-nums">{money(hv.v)}</span>
+          </div>
+          {hcv !== null && (
+            <div className="flex items-center gap-2 text-[11px] mt-0.5">
+              <span className="inline-block w-3 h-[2px] rounded" style={{ background: COMPARE }} />
+              <span className="font-bold text-white/70 tabular-nums">{money(hcv)}</span>
+              <span className="text-white/35">{compareLabel || 'last period'}</span>
+            </div>
+          )}
+          <div className="text-[10px] font-bold text-white/40 mt-1">
             {hv.projected ? 'Projected at current pace' : `Running total · +${money(days[hover].total)} that day`}
           </div>
         </Tooltip>
@@ -309,7 +370,12 @@ function CumulativeLine({ days, todayKey, projectedEnd }: { days: PayoutDay[]; t
   );
 }
 
-export default function PayoutCharts({ days, todayKey, projectedEnd }: { days: PayoutDay[]; todayKey: string; projectedEnd: number }) {
+export default function PayoutCharts({
+  days, todayKey, projectedEnd, compareDays, compareLabel
+}: {
+  days: PayoutDay[]; todayKey: string; projectedEnd: number;
+  compareDays?: PayoutDay[]; compareLabel?: string;
+}) {
   const all = days.flatMap(d => d.transactions.map(t => ({ ...t })));
   const newestFirst = [...all].sort((a, b) => b.time.localeCompare(a.time));
   const total = all.reduce((s, t) => s + t.amount, 0);
@@ -320,8 +386,8 @@ export default function PayoutCharts({ days, todayKey, projectedEnd }: { days: P
         <DailyColumns days={days} todayKey={todayKey} />
       </ChartFrame>
 
-      <ChartFrame title="Cumulative revenue" subtitle="Running total for the period. The dotted line is the projection at the current pace.">
-        <CumulativeLine days={days} todayKey={todayKey} projectedEnd={projectedEnd} />
+      <ChartFrame title="Cumulative revenue" subtitle={`Running total for the period. The dotted line is the projection at the current pace.${compareDays?.length ? ` ${compareLabel || 'Last period'} shown in yellow for comparison.` : ''}`}>
+        <CumulativeLine days={days} todayKey={todayKey} projectedEnd={projectedEnd} compareDays={compareDays} compareLabel={compareLabel} />
       </ChartFrame>
 
       <details className="bg-white/[0.02] border border-white/[0.04] rounded-2xl p-5 group">

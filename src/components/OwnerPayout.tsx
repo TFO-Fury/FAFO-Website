@@ -153,7 +153,11 @@ export default function OwnerPayout() {
           </p>
         </div>
 
-        <PayoutCharts days={data.days} todayKey={data.todayKey} projectedEnd={data.projectedGrossRevenue} />
+        <PayoutCharts
+          days={data.days} todayKey={data.todayKey} projectedEnd={data.projectedGrossRevenue}
+          compareDays={lastCycle.data?.days}
+          compareLabel={lastCycle.data ? `${fmtDay(lastCycle.data.periodStart)} – ${fmtDay(lastCycle.data.periodEnd)}` : undefined}
+        />
         </div>
       )}
 
