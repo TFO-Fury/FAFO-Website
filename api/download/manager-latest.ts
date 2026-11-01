@@ -1,7 +1,55 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+import crypto from 'crypto';
 
 const GITHUB_REPO = 'FAFO-Rotations/FAFO-Rotations';
 const DEFAULT_ASSET = 'FAFO.zip';
+
+// ZIP end-of-central-directory record: a fixed 22-byte trailer every zip
+// reader (Explorer, 7-Zip, Python's zipfile, the ones real-world leaks get
+// re-extracted and re-zipped with) locates by scanning backward from EOF for
+// this signature, then trusts the comment-length field to know how many
+// bytes of free-form "comment" follow it. Rewriting just that comment is the
+// one way to change the file's bytes - and therefore its hash - on every
+// download without touching any entry's data or the central directory, so
+// the archive still opens identically for the person downloading it.
+const EOCD_SIG = 0x06054b50;
+const EOCD_FIXED_SIZE = 22;
+const MAX_COMMENT_LEN = 65535;
+
+function findEocdOffset(buf: Buffer): number {
+  const searchStart = Math.max(0, buf.length - EOCD_FIXED_SIZE - MAX_COMMENT_LEN);
+  // Scan backward from the end so a signature-looking byte sequence inside
+  // stored file data (before any real EOCD) is never mistaken for it - and
+  // confirm the match by checking the comment length actually reaches EOF,
+  // since the 4-byte signature alone isn't enough to rule out a coincidence.
+  for (let offset = buf.length - EOCD_FIXED_SIZE; offset >= searchStart; offset--) {
+    if (buf.readUInt32LE(offset) === EOCD_SIG) {
+      const commentLen = buf.readUInt16LE(offset + 20);
+      if (offset + EOCD_FIXED_SIZE + commentLen === buf.length) return offset;
+    }
+  }
+  return -1;
+}
+
+// Stamps a unique watermark (timestamp + random nonce, so two downloads in
+// the same millisecond still differ) into the hidden ZIP comment field.
+// Invisible during normal use - nothing in the archive's file list or
+// extracted contents changes - but it means every single download is a
+// bit-for-bit unique file, traceable back to this log line if a copy of it
+// ever turns up somewhere it shouldn't.
+function watermarkZip(buf: Buffer, assetName: string): Buffer {
+  const eocdOffset = findEocdOffset(buf);
+  if (eocdOffset === -1) {
+    console.error(`[ManagerDownloadProxy] Could not locate ZIP EOCD in "${assetName}"; shipping unwatermarked`);
+    return buf;
+  }
+  const watermark = `fafo-dl:${new Date().toISOString()}:${crypto.randomBytes(8).toString('hex')}`;
+  const commentBuf = Buffer.from(watermark, 'utf8');
+  const lengthBuf = Buffer.alloc(2);
+  lengthBuf.writeUInt16LE(commentBuf.length, 0);
+  console.log(`[ManagerDownloadProxy] Watermarked "${assetName}": ${watermark}`);
+  return Buffer.concat([buf.subarray(0, eocdOffset + 20), lengthBuf, commentBuf]);
+}
 
 // Same proxy-download pattern as api/download/latest.ts, but for the FAFO Manager's own release
 // train. The repo has two independent series of GitHub Releases sharing one repo: `release-*`
@@ -128,31 +176,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(502).json({ error: 'Failed to download asset binary' });
     }
 
-    const contentLength = binaryRes.headers.get('content-length');
+    // 5. Buffer the full file (watermarking needs to rewrite the trailing few
+    // bytes after the whole thing is in hand - can't stream chunk-by-chunk
+    // and still do that) and watermark it if it's a zip before sending.
+    const rawBuffer = Buffer.from(await binaryRes.arrayBuffer());
+    const outBuffer = assetName.toLowerCase().endsWith('.zip') ? watermarkZip(rawBuffer, assetName) : rawBuffer;
 
-    // 5. Stream to client
     res.status(200);
     res.setHeader('Content-Type', 'application/octet-stream');
     res.setHeader('Content-Disposition', `attachment; filename="${assetName}"`);
-    if (contentLength) {
-      res.setHeader('Content-Length', contentLength);
-    }
+    res.setHeader('Content-Length', String(outBuffer.length));
     res.setHeader('Cache-Control', 'no-store');
+    res.end(outBuffer);
 
-    if (binaryRes.body) {
-      const reader = binaryRes.body.getReader();
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        res.write(Buffer.from(value));
-      }
-      res.end();
-    } else {
-      const buffer = await binaryRes.arrayBuffer();
-      res.end(Buffer.from(buffer));
-    }
-
-    console.log(`[ManagerDownloadProxy] Stream success: ${asset.name}, size: ${contentLength || 'unknown'}`);
+    console.log(`[ManagerDownloadProxy] Download success: ${asset.name}, size: ${outBuffer.length}`);
 
   } catch (err: any) {
     console.error('[ManagerDownloadProxy] Unhandled error:', err);
