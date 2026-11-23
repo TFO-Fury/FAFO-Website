@@ -47,11 +47,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   const body = await readJsonBody(req);
-  const { key, spec } = body || {};
+  const { key, spec, version: rawVersion } = body || {};
 
   if (!key || typeof key !== 'string' || !spec || typeof spec !== 'string') {
     return res.status(400).json({ valid: false, error: 'key and spec required' });
   }
+
+  // Display-only and client-supplied: a missing or malformed value must never affect licensing.
+  const trimmedVersion = typeof rawVersion === 'string' ? rawVersion.trim() : '';
+  const version = /^[A-Za-z0-9 ._#-]{1,40}$/.test(trimmedVersion) ? trimmedVersion : null;
 
   if (isRateLimited(key)) {
     console.warn(`[ManagerVerify] Rate limit exceeded for key=${key}`);
@@ -98,7 +102,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // below decides - record it so the admin panel can show last-seen
     // instead of the rarely-useful Role column. Fire-and-forget: this must
     // never slow down or fail the actual license response.
-    userDoc.ref.set({ lastManagerPingAt: FieldValue.serverTimestamp(), lastManagerPingSpec: spec }, { merge: true })
+    userDoc.ref.set({
+      lastManagerPingAt: FieldValue.serverTimestamp(),
+      lastManagerPingSpec: spec,
+      // Cleared when absent so a rollback to an older build can't keep showing the newer version.
+      lastManagerVersion: version ?? FieldValue.delete()
+    }, { merge: true })
       .catch(err => console.error('[ManagerVerify] Failed to record lastManagerPingAt:', err));
 
     // Ping history (User Command Center's "Recent Pings" log, and the
@@ -108,7 +117,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Analytics aggregate (per-user range query, same shape) stay on
     // automatic single-field indexes - no manual composite/collection-group
     // index to set up anywhere. Also fire-and-forget.
-    userDoc.ref.collection('pings').add({ spec, class: wantClass, at: FieldValue.serverTimestamp() })
+    userDoc.ref.collection('pings').add({ spec, class: wantClass, at: FieldValue.serverTimestamp(), ...(version ? { version } : {}) })
       .catch(err => console.error('[ManagerVerify] Failed to record ping history:', err));
 
     const normalized = normalizeEntitlements(userDoc.data());

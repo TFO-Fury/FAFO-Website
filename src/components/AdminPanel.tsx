@@ -735,6 +735,9 @@ export function AdminPanel({ onViewUser, isOwner = false }: AdminPanelProps) {
                                         {user?.lastManagerPingSpec && (
                                           <span className="text-[9px] font-bold text-white/20 truncate">{user.lastManagerPingSpec}</span>
                                         )}
+                                        {user?.lastManagerPingAt && (
+                                          <span className="text-[9px] font-bold text-white/35 truncate tabular-nums">{user.lastManagerVersion || 'Pre-v2.6.44'}</span>
+                                        )}
                                       </div>
                                     );
                                   })()}
