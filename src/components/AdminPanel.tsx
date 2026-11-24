@@ -23,7 +23,10 @@ import {
   Hexagon,
   DollarSign,
   Github,
-  Wrench
+  Wrench,
+  ChevronUp,
+  ChevronDown,
+  ChevronsUpDown
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import AnalyticsDashboard from './AnalyticsDashboard';
@@ -80,6 +83,49 @@ function formatLastPing(ts: any): { text: string; color: string } {
   return { text: d.toLocaleDateString(), color: 'text-white/30' };
 }
 
+function toDate(v: any): Date | null {
+  const d = v?.toDate ? v.toDate() : (v instanceof Date ? v : (v ? new Date(v) : null));
+  return d && !isNaN(d.getTime()) ? d : null;
+}
+
+function getUserStatus(user: any): 'Active' | 'Inactive' | 'Disabled' | 'Banned' {
+  if (user?.accountStatus === 'disabled') return 'Disabled';
+  if (user?.accountStatus === 'banned') return 'Banned';
+  const now = new Date();
+  const legacyExpired = user?.expiresAt && typeof user.expiresAt.toDate === 'function' && user.expiresAt.toDate() < now;
+  const aioExpired = user?.aioExpires && (() => { const d = user.aioExpires?.toDate ? user.aioExpires.toDate() : new Date(user.aioExpires); return !isNaN(d.getTime()) && d < now; })();
+  const anyActiveClass = user?.classEntitlements && Object.values(user.classEntitlements).some((ent: any) => { const d = ent?.expires?.toDate ? ent.expires.toDate() : new Date(ent?.expires); return !isNaN(d.getTime()) && d >= now; });
+  const isExpired = legacyExpired && !anyActiveClass && (!user?.aioExpires || aioExpired);
+  return user?.accountStatus === 'active' && !isExpired ? 'Active' : 'Inactive';
+}
+
+// Latest expiry the Expires column would show: AIO date, else the furthest class date, else legacy expiresAt.
+function getExpiryTime(user: any): number | null {
+  const aio = toDate(user?.aioExpires);
+  if (aio) return aio.getTime();
+  const classTimes = Object.values<any>(user?.classEntitlements || {})
+    .map(ent => toDate(ent?.expires)?.getTime())
+    .filter((t): t is number => t != null);
+  if (classTimes.length) return Math.max(...classTimes);
+  return toDate(user?.expiresAt)?.getTime() ?? null;
+}
+
+type SortKey = 'user' | 'plan' | 'lastPing' | 'status' | 'expires' | 'discord' | 'key';
+
+const PLAN_RANK: Record<string, number> = { aio: 3, single: 2, trial: 1 };
+const STATUS_RANK: Record<string, number> = { Active: 3, Inactive: 2, Banned: 1, Disabled: 0 };
+
+// First click on a column uses the direction you'd usually want (newest ping, best plan, A-Z...).
+const SORT_COLUMNS: { key: SortKey; label: string; width: string; firstDir: 'asc' | 'desc' }[] = [
+  { key: 'user', label: 'User', width: 'w-[300px]', firstDir: 'asc' },
+  { key: 'plan', label: 'Plan', width: 'w-[120px]', firstDir: 'desc' },
+  { key: 'lastPing', label: 'Last Ping', width: 'w-[130px]', firstDir: 'desc' },
+  { key: 'status', label: 'Status', width: 'w-[100px]', firstDir: 'desc' },
+  { key: 'expires', label: 'Expires', width: 'w-[160px]', firstDir: 'desc' },
+  { key: 'discord', label: 'Discord', width: 'w-[160px]', firstDir: 'asc' },
+  { key: 'key', label: 'Key', width: 'w-[100px]', firstDir: 'desc' }
+];
+
 function formatClassName(val: any): string {
   if (!val) return 'Unknown Class';
   if (typeof val !== 'string') return String(val);
@@ -120,6 +166,7 @@ export function AdminPanel({ onViewUser, isOwner = false }: AdminPanelProps) {
   const [disabledSpecs, setDisabledSpecs] = useState<Record<string, boolean>>({});
   const [specToggleLoading, setSpecToggleLoading] = useState<string | null>(null);
   const [bulkGrantLoading, setBulkGrantLoading] = useState(false);
+  const [sort, setSort] = useState<{ key: SortKey; dir: 'asc' | 'desc' } | null>(null);
 
   useEffect(() => {
     // Listen to users
@@ -391,6 +438,39 @@ export function AdminPanel({ onViewUser, isOwner = false }: AdminPanelProps) {
     console.error('[AdminPanel] filteredUsers computation crashed, falling back to unfiltered list:', err);
   }
 
+  // Click a header: first click sorts its natural way, second flips it, third goes back to newest signups.
+  const toggleSort = (key: SortKey, firstDir: 'asc' | 'desc') => {
+    setSort(prev => {
+      if (!prev || prev.key !== key) return { key, dir: firstDir };
+      if (prev.dir === firstDir) return { key, dir: firstDir === 'asc' ? 'desc' : 'asc' };
+      return null;
+    });
+  };
+
+  if (sort) {
+    const keyOwners = new Set(allKeys.map(k => k.userId));
+    const valueOf = (user: any): string | number | null => {
+      switch (sort.key) {
+        case 'user': return (user.email || '').toLowerCase() || null;
+        case 'plan': return PLAN_RANK[user.plan] ?? 0;
+        case 'lastPing': return toDate(user.lastManagerPingAt)?.getTime() ?? null;
+        case 'status': return STATUS_RANK[getUserStatus(user)];
+        case 'expires': return getExpiryTime(user);
+        case 'discord': return (user.discordUsername || '').toLowerCase() || (user.discordId ? '￿' : null);
+        case 'key': return keyOwners.has(user.id) ? 1 : 0;
+      }
+    };
+    const sign = sort.dir === 'asc' ? 1 : -1;
+    // Array.sort is stable, so ties keep the newest-signup-first order.
+    filteredUsers = [...filteredUsers].sort((a, b) => {
+      const va = valueOf(a), vb = valueOf(b);
+      if (va === vb) return 0;
+      if (va == null) return 1; // blanks (never pinged, no email, not linked...) always sink to the bottom
+      if (vb == null) return -1;
+      return (va < vb ? -1 : 1) * sign;
+    });
+  }
+
   if (loading) return <div className="flex-1 flex items-center justify-center"><div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" /></div>;
 
   return (
@@ -543,13 +623,22 @@ export function AdminPanel({ onViewUser, isOwner = false }: AdminPanelProps) {
               <table className="w-full text-left">
                 <thead>
                   <tr className="border-b border-white/[0.04] bg-white/[0.02]">
-                    <th className="px-5 py-4 text-[10px] font-black uppercase tracking-widest text-white/20 w-[300px]">User</th>
-                    <th className="px-5 py-4 text-[10px] font-black uppercase tracking-widest text-white/20 w-[120px]">Plan</th>
-                    <th className="px-5 py-4 text-[10px] font-black uppercase tracking-widest text-white/20 w-[130px]">Last Ping</th>
-                    <th className="px-5 py-4 text-[10px] font-black uppercase tracking-widest text-white/20 w-[100px]">Status</th>
-                    <th className="px-5 py-4 text-[10px] font-black uppercase tracking-widest text-white/20 w-[160px]">Expires</th>
-                    <th className="px-5 py-4 text-[10px] font-black uppercase tracking-widest text-white/20 w-[160px]">Discord</th>
-                    <th className="px-5 py-4 text-[10px] font-black uppercase tracking-widest text-white/20 w-[100px]">Key</th>
+                    {SORT_COLUMNS.map(col => {
+                      const active = sort?.key === col.key;
+                      const Icon = !active ? ChevronsUpDown : sort.dir === 'asc' ? ChevronUp : ChevronDown;
+                      return (
+                        <th key={col.key} className={`px-5 py-4 ${col.width}`} aria-sort={active ? (sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'}>
+                          <button
+                            type="button"
+                            onClick={() => toggleSort(col.key, col.firstDir)}
+                            className={`group/sort inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-widest transition-colors ${active ? 'text-white/70' : 'text-white/20 hover:text-white/50'}`}
+                          >
+                            {col.label}
+                            <Icon className={`w-3 h-3 ${active ? '' : 'opacity-0 group-hover/sort:opacity-100'}`} />
+                          </button>
+                        </th>
+                      );
+                    })}
                     <th className="px-5 py-4 text-[10px] font-black uppercase tracking-widest text-white/20 text-right">Actions</th>
                   </tr>
                 </thead>
@@ -762,12 +851,7 @@ export function AdminPanel({ onViewUser, isOwner = false }: AdminPanelProps) {
                                         </div>
                                       );
                                     }
-                                    const now = new Date();
-                                    const legacyExpired = user?.expiresAt && typeof user.expiresAt.toDate === 'function' && user.expiresAt.toDate() < now;
-                                    const aioExpired = user?.aioExpires && (() => { const d = user.aioExpires?.toDate ? user.aioExpires.toDate() : new Date(user.aioExpires); return !isNaN(d.getTime()) && d < now; })();
-                                    const anyActiveClass = user?.classEntitlements && Object.values(user.classEntitlements).some((ent: any) => { const d = ent?.expires?.toDate ? ent.expires.toDate() : new Date(ent?.expires); return !isNaN(d.getTime()) && d >= now; });
-                                    const isExpired = legacyExpired && !anyActiveClass && (!user?.aioExpires || aioExpired);
-                                    const isActive = user?.accountStatus === 'active' && !isExpired;
+                                    const isActive = getUserStatus(user) === 'Active';
                                     return (
                                       <div className="flex items-center gap-1.5">
                                         <span className={`w-1.5 h-1.5 rounded-full ${isActive ? 'bg-green-500' : 'bg-red-500'}`} />
